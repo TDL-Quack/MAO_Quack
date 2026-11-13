@@ -64,7 +64,8 @@ public:
         }
 
         const int numPiste = Selection::indexPiste (edit, *clip);
-        const auto couleur = Couleurs::dePiste (numPiste);
+        const auto couleur = numPiste >= 0 ? couleurPiste (*te::getAudioTracks (edit)[numPiste], numPiste)
+                                           : Couleurs::accent;
         const auto zone = zoneGrille();
         const auto clavier = zoneClavier();
         const double longueur = longueurClip (*clip);
@@ -808,7 +809,7 @@ private:
                         somme += n->getNoteNumber();
                     centre = somme / notes.size();
                 }
-                else if (numPiste == 1)
+                else if (piste != nullptr && piste->getName().containsIgnoreCase ("basse"))
                 {
                     centre = 43;    // piste de basse : plus grave
                 }

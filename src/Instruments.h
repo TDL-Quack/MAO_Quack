@@ -170,9 +170,31 @@ namespace Instruments
         }
     }
 
-    enum class Synthe { basse, melodie, accords };
+    enum class Type { batterie, basse, melodie, accords, cloches, orgue, jeuVideo };
 
-    inline void installerSynthe (te::AudioTrack& piste, Synthe type)
+    inline const std::array<Type, 7>& tous()
+    {
+        static const std::array<Type, 7> t {{ Type::batterie, Type::basse, Type::melodie, Type::accords,
+                                              Type::cloches, Type::orgue, Type::jeuVideo }};
+        return t;
+    }
+
+    inline juce::String nomDe (Type t)
+    {
+        switch (t)
+        {
+            case Type::batterie:    return "Batterie";
+            case Type::basse:       return "Basse";
+            case Type::melodie:     return fr ("Mélodie");
+            case Type::accords:     return "Accords";
+            case Type::cloches:     return "Cloches";
+            case Type::orgue:       return "Orgue";
+            case Type::jeuVideo:    return fr ("Jeu vidéo");
+        }
+        return {};
+    }
+
+    inline void installerSynthe (te::AudioTrack& piste, Type type)
     {
         auto plugin = piste.edit.getPluginCache().createNewPlugin (te::FourOscPlugin::xmlTypeName, {});
         if (plugin == nullptr)
@@ -199,7 +221,7 @@ namespace Instruments
 
         switch (type)
         {
-            case Synthe::basse:
+            case Type::basse:
                 o1.waveShapeValue = scie;
                 o2.waveShapeValue = carre;
                 regler (o2.tune, -12.0f);
@@ -216,7 +238,7 @@ namespace Instruments
                 regler (s->masterLevel, -9.0f);
                 break;
 
-            case Synthe::melodie:
+            case Type::melodie:
                 o1.waveShapeValue = scie;
                 o1.voicesValue = 2;
                 regler (o1.detune, 0.12f);
@@ -233,7 +255,7 @@ namespace Instruments
                 regler (s->masterLevel, -13.0f);
                 break;
 
-            case Synthe::accords:
+            case Type::accords:
                 o1.waveShapeValue = scie;
                 o1.voicesValue = 3;
                 regler (o1.detune, 0.2f);
@@ -250,7 +272,67 @@ namespace Instruments
                 regler (s->reverbMix, 0.25f);
                 regler (s->masterLevel, -16.0f);
                 break;
+
+            case Type::cloches:
+                o1.waveShapeValue = sinus;
+                o2.waveShapeValue = sinus;
+                regler (o2.tune, 19.0f);
+                regler (o2.level, -12.0f);
+                s->filterTypeValue = 0;
+                regler (s->ampAttack, 0.002f);
+                regler (s->ampDecay, 1.2f);
+                regler (s->ampSustain, 0.0f);
+                regler (s->ampRelease, 0.8f);
+                s->reverbOnValue = true;
+                regler (s->reverbMix, 0.3f);
+                regler (s->masterLevel, -10.0f);
+                break;
+
+            case Type::orgue:
+                o1.waveShapeValue = sinus;
+                o2.waveShapeValue = sinus;
+                regler (o2.tune, 12.0f);
+                regler (o2.level, -6.0f);
+                s->oscParams[2]->waveShapeValue = triangle;
+                regler (s->oscParams[2]->tune, 19.0f);
+                regler (s->oscParams[2]->level, -14.0f);
+                s->filterTypeValue = 0;
+                regler (s->ampAttack, 0.01f);
+                regler (s->ampDecay, 0.1f);
+                regler (s->ampSustain, 100.0f);
+                regler (s->ampRelease, 0.08f);
+                s->chorusOnValue = true;
+                regler (s->masterLevel, -13.0f);
+                break;
+
+            case Type::jeuVideo:
+                o1.waveShapeValue = carre;
+                regler (o1.pulseWidth, 0.25f);
+                s->filterTypeValue = 0;
+                s->ampAnalogValue = false;
+                regler (s->ampAttack, 0.001f);
+                regler (s->ampDecay, 0.15f);
+                regler (s->ampSustain, 60.0f);
+                regler (s->ampRelease, 0.03f);
+                regler (s->masterLevel, -16.0f);
+                break;
+
+            case Type::batterie:
+                break;
         }
+    }
+
+    /** Met l'instrument choisi sur la piste (et retire l'ancien s'il y en avait un). */
+    inline void installer (te::AudioTrack& piste, Type type)
+    {
+        for (auto* p : piste.pluginList.getPlugins())
+            if (dynamic_cast<te::SamplerPlugin*> (p) != nullptr || dynamic_cast<te::FourOscPlugin*> (p) != nullptr)
+                p->deleteFromParent();
+
+        if (type == Type::batterie)
+            installerBatterie (piste);
+        else
+            installerSynthe (piste, type);
     }
 
     /** Vrai si la piste joue la batterie. */

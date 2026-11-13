@@ -1,6 +1,5 @@
 /*
     MAO Quack — un petit logiciel de musique pour débuter.
-    Étape 2 : clips, piano roll, batterie et synthés intégrés.
 */
 
 #include "Commun.h"
@@ -10,14 +9,69 @@
 #include "Instruments.h"
 #include "PianoRoll.h"
 
+static const char* const extensionMorceau = ".quack";
+
 //==============================================================================
-/** Tout le contenu de la fenêtre. */
+/** Un morceau tout neuf, avec quatre pistes et un petit rythme. */
+static std::unique_ptr<te::Edit> creerNouveauMorceau (te::Engine& e)
+{
+    auto fichier = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                       .getChildFile ("MAOQuack")
+                       .getChildFile ("sans_titre.tracktionedit");
+    fichier.getParentDirectory().createDirectory();
+    fichier.deleteFile();
+
+    auto ed = te::createEmptyEdit (e, fichier);
+
+    const Instruments::Type types[] = { Instruments::Type::batterie, Instruments::Type::basse,
+                                        Instruments::Type::melodie, Instruments::Type::accords };
+    ed->ensureNumberOfAudioTracks (4);
+    auto pistes = te::getAudioTracks (*ed);
+
+    for (int i = 0; i < juce::jmin (4, pistes.size()); ++i)
+    {
+        pistes[i]->setName (Instruments::nomDe (types[i]));
+        pistes[i]->setColour (Couleurs::dePiste (i));
+        Instruments::installer (*pistes[i], types[i]);
+    }
+
+    if (! pistes.isEmpty())
+    {
+        // Un petit rythme pour ne pas partir d'une page blanche
+        const te::BeatRange mesure (te::BeatPosition::fromBeats (0.0), te::BeatPosition::fromBeats (4.0));
+
+        if (auto clip = pistes[0]->insertMIDIClip ("Rythme", ed->tempoSequence.toTime (mesure), nullptr))
+        {
+            auto& seq = clip->getSequence();
+            const int gc = Instruments::premiereNoteBatterie, cc = gc + 1, ch = gc + 2;
+            auto poser = [&seq] (int note, double temps)
+            {
+                seq.addNote (note, te::BeatPosition::fromBeats (temps), te::BeatDuration::fromBeats (0.25), 100, 0, nullptr);
+            };
+
+            for (double t : { 0.0, 2.0, 2.5 })   poser (gc, t);
+            for (double t : { 1.0, 3.0 })        poser (cc, t);
+            for (int i = 0; i < 8; ++i)          poser (ch, i * 0.5);
+        }
+    }
+
+    ed->tempoSequence.getTempo (0)->setBpm (120.0);
+    ed->clickTrackEnabled = false;
+    ed->getUndoManager().clearUndoHistory();
+    ed->resetChangedStatus();
+
+    return ed;
+}
+
+//==============================================================================
+/** Tout le contenu de la fenêtre, pour un morceau donné. */
 class ComposantPrincipal : public juce::Component
 {
 public:
-    ComposantPrincipal (te::Engine& e)
+    ComposantPrincipal (te::Engine& e, std::unique_ptr<te::Edit> morceau, const juce::File& fichierDuMorceau)
         : engine (e),
-          edit (creerMorceauVide (e)),
+          edit (std::move (morceau)),
+          fichier (fichierDuMorceau),
           selection (*edit),
           transport (*edit),
           arrangement (*edit, selection),
@@ -30,6 +84,8 @@ public:
         addAndMakeVisible (pianoRoll);
 
         transport.surReglagesAudio = [this] { ouvrirReglagesAudio(); };
+        transport.surFichier = [this] { menuFichier(); };
+        transport.definirTitre (nomDuMorceau());
 
         edit->getTransport().ensureContextAllocated();
 
@@ -42,6 +98,48 @@ public:
         edit->getTransport().stop (false, true);
     }
 
+    /** Appelé quand il faut afficher un autre morceau (nouveau ou ouvert). */
+    std::function<void (std::shared_ptr<std::unique_ptr<te::Edit>>, juce::File)> surRemplacer;
+
+    juce::String nomDuMorceau() const
+    {
+        return fichier == juce::File() ? fr ("Nouveau morceau") : fichier.getFileNameWithoutExtension();
+    }
+
+    /** Si le morceau a changé, propose de l'enregistrer, puis continue. */
+    void verifierPuis (std::function<void()> suite)
+    {
+        if (! edit->hasChangedSinceSaved())
+        {
+            suite();
+            return;
+        }
+
+        juce::Component::SafePointer<ComposantPrincipal> moi (this);
+
+        juce::AlertWindow::showAsync (
+            juce::MessageBoxOptions()
+                .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                .withTitle (fr ("Enregistrer le morceau ?"))
+                .withMessage (fr ("Tu as fait des changements dans « ") + nomDuMorceau()
+                                  + fr (" ». Veux-tu les enregistrer ?"))
+                .withButton ("Enregistrer", 1)
+                .withButton ("Ne pas enregistrer", 2)
+                .withButton ("Annuler", 0)
+                .withAssociatedComponent (this),
+            [moi, suite] (int reponse)
+            {
+                if (moi == nullptr || reponse == 0)
+                    return;
+
+                if (reponse == 1)
+                    moi->enregistrer (false, suite);
+                else
+                    suite();
+            });
+    }
+
+    //==========================================================================
     void paint (juce::Graphics& g) override     { g.fillAll (Couleurs::bordure); }
 
     void resized() override
@@ -75,35 +173,25 @@ public:
         }
 
         const auto mods = k.getModifiers();
+        if (! mods.isCommandDown())
+            return false;
 
-        if (mods.isCommandDown() && k.getKeyCode() == 'D')
-        {
-            arrangement.dupliquerClipChoisi();
-            return true;
-        }
+        const bool dansPianoRoll = pianoRoll.hasKeyboardFocus (true);
 
-        if (mods.isCommandDown() && k.getKeyCode() == 'C' && ! pianoRoll.hasKeyboardFocus (true))
+        switch (k.getKeyCode())
         {
-            arrangement.copierClipChoisi();
-            return true;
-        }
-
-        if (mods.isCommandDown() && k.getKeyCode() == 'V' && ! pianoRoll.hasKeyboardFocus (true))
-        {
-            arrangement.collerClip();
-            return true;
-        }
-
-        if (mods.isCommandDown() && (k.getKeyCode() == 'Y' || (k.getKeyCode() == 'Z' && mods.isShiftDown())))
-        {
-            edit->getUndoManager().redo();
-            return true;
-        }
-
-        if (mods.isCommandDown() && k.getKeyCode() == 'Z')
-        {
-            edit->getUndoManager().undo();
-            return true;
+            case 'S':   enregistrer (mods.isShiftDown(), {});                   return true;
+            case 'O':   ouvrir();                                               return true;
+            case 'N':   nouveau();                                              return true;
+            case 'D':   arrangement.dupliquerClipChoisi();                      return true;
+            case 'C':   if (! dansPianoRoll) arrangement.copierClipChoisi();    return true;
+            case 'V':   if (! dansPianoRoll) arrangement.collerClip();          return true;
+            case 'Y':   edit->getUndoManager().redo();                          return true;
+            case 'Z':
+                if (mods.isShiftDown())   edit->getUndoManager().redo();
+                else                      edit->getUndoManager().undo();
+                return true;
+            default:    break;
         }
 
         return false;
@@ -114,7 +202,7 @@ public:
 private:
     te::Engine& engine;
     std::unique_ptr<te::Edit> edit;
-
+    juce::File fichier;
     Selection selection;
 
     BarreTransport transport;
@@ -123,53 +211,152 @@ private:
     ZoneAide aide;
     PianoRoll pianoRoll;
 
-    static std::unique_ptr<te::Edit> creerMorceauVide (te::Engine& e)
+    std::shared_ptr<juce::FileChooser> selecteur;
+
+    //==========================================================================
+    static juce::File dossierMorceaux()
     {
-        auto fichier = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                           .getChildFile ("MAOQuack")
-                           .getChildFile ("sans_titre.tracktionedit");
-        fichier.getParentDirectory().createDirectory();
-        fichier.deleteFile();
+        auto d = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("MAO Quack");
+        d.createDirectory();
+        return d;
+    }
 
-        auto ed = te::createEmptyEdit (e, fichier);
+    void menuFichier()
+    {
+        juce::PopupMenu m;
+        m.addItem (1, fr ("Nouveau morceau          Ctrl+N"));
+        m.addItem (2, fr ("Ouvrir...                         Ctrl+O"));
+        m.addSeparator();
+        m.addItem (3, fr ("Enregistrer                    Ctrl+S"));
+        m.addItem (4, fr ("Enregistrer sous..."));
 
-        static const char* const noms[] = { "Batterie", "Basse", "Mélodie", "Accords" };
-        ed->ensureNumberOfAudioTracks (4);
-        auto pistes = te::getAudioTracks (*ed);
+        juce::Component::SafePointer<ComposantPrincipal> moi (this);
 
-        for (int i = 0; i < juce::jmin (4, pistes.size()); ++i)
-            pistes[i]->setName (fr (noms[i]));
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&transport.boutonFichier()),
+                         [moi] (int choix)
+                         {
+                             if (moi == nullptr)
+                                 return;
 
-        if (pistes.size() >= 4)
+                             switch (choix)
+                             {
+                                 case 1:  moi->nouveau();                  break;
+                                 case 2:  moi->ouvrir();                   break;
+                                 case 3:  moi->enregistrer (false, {});    break;
+                                 case 4:  moi->enregistrer (true, {});     break;
+                                 default: break;
+                             }
+                         });
+    }
+
+    void remplacer (std::unique_ptr<te::Edit> nouveauMorceau, const juce::File& f)
+    {
+        if (surRemplacer)
+            surRemplacer (std::make_shared<std::unique_ptr<te::Edit>> (std::move (nouveauMorceau)), f);
+    }
+
+    void nouveau()
+    {
+        verifierPuis ([this] { remplacer (creerNouveauMorceau (engine), {}); });
+    }
+
+    void ouvrir()
+    {
+        verifierPuis ([this]
         {
-            Instruments::installerBatterie (*pistes[0]);
-            Instruments::installerSynthe (*pistes[1], Instruments::Synthe::basse);
-            Instruments::installerSynthe (*pistes[2], Instruments::Synthe::melodie);
-            Instruments::installerSynthe (*pistes[3], Instruments::Synthe::accords);
+            selecteur = std::make_shared<juce::FileChooser> (fr ("Ouvrir un morceau"), dossierMorceaux(),
+                                                             juce::String ("*") + extensionMorceau);
+            juce::Component::SafePointer<ComposantPrincipal> moi (this);
 
-            // Un petit rythme pour ne pas partir d'une page blanche
-            const te::BeatRange mesure (te::BeatPosition::fromBeats (0.0), te::BeatPosition::fromBeats (4.0));
+            selecteur->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                    [moi] (const juce::FileChooser& fc)
+                                    {
+                                        const auto f = fc.getResult();
+                                        if (moi == nullptr || ! f.existsAsFile())
+                                            return;
 
-            if (auto clip = pistes[0]->insertMIDIClip ("Rythme", ed->tempoSequence.toTime (mesure), nullptr))
-            {
-                auto& seq = clip->getSequence();
-                const int gc = Instruments::premiereNoteBatterie, cc = gc + 1, ch = gc + 2;
-                auto poser = [&seq] (int note, double temps)
-                {
-                    seq.addNote (note, te::BeatPosition::fromBeats (temps), te::BeatDuration::fromBeats (0.25), 100, 0, nullptr);
-                };
+                                        moi->edit->getTransport().stop (false, false);
+                                        auto charge = te::loadEditFromFile (moi->engine, f);
 
-                for (double t : { 0.0, 2.0, 2.5 })   poser (gc, t);
-                for (double t : { 1.0, 3.0 })        poser (cc, t);
-                for (int i = 0; i < 8; ++i)          poser (ch, i * 0.5);
-            }
+                                        if (charge == nullptr || te::getAudioTracks (*charge).isEmpty())
+                                        {
+                                            juce::AlertWindow::showAsync (
+                                                juce::MessageBoxOptions()
+                                                    .withIconType (juce::MessageBoxIconType::WarningIcon)
+                                                    .withTitle (fr ("Impossible d'ouvrir ce fichier"))
+                                                    .withMessage (fr ("Ce fichier n'est pas un morceau MAO Quack, ou il est abîmé."))
+                                                    .withButton ("OK", 1)
+                                                    .withAssociatedComponent (moi.getComponent()),
+                                                nullptr);
+                                            return;
+                                        }
+
+                                        charge->getUndoManager().clearUndoHistory();
+                                        charge->resetChangedStatus();
+                                        moi->remplacer (std::move (charge), f);
+                                    });
+        });
+    }
+
+    bool ecrire (const juce::File& f)
+    {
+        const bool ok = te::EditFileOperations (*edit).writeToFile (f, false);
+
+        if (ok)
+        {
+            fichier = f;
+            edit->resetChangedStatus();
+            transport.definirTitre (nomDuMorceau());
+
+            if (auto* fenetre = dynamic_cast<juce::DocumentWindow*> (getTopLevelComponent()))
+                fenetre->setName ("MAO Quack - " + nomDuMorceau());
+        }
+        else
+        {
+            juce::AlertWindow::showAsync (
+                juce::MessageBoxOptions()
+                    .withIconType (juce::MessageBoxIconType::WarningIcon)
+                    .withTitle (fr ("L'enregistrement a échoué"))
+                    .withMessage (fr ("Le morceau n'a pas pu être enregistré à cet endroit. Essaie un autre dossier."))
+                    .withButton ("OK", 1)
+                    .withAssociatedComponent (this),
+                nullptr);
         }
 
-        ed->tempoSequence.getTempo (0)->setBpm (120.0);
-        ed->clickTrackEnabled = false;
-        ed->getUndoManager().clearUndoHistory();
+        return ok;
+    }
 
-        return ed;
+    /** Enregistre le morceau (en demandant où si besoin), puis continue. */
+    void enregistrer (bool demanderOu, std::function<void()> suite)
+    {
+        if (! demanderOu && fichier != juce::File())
+        {
+            if (ecrire (fichier) && suite)
+                suite();
+            return;
+        }
+
+        const auto depart = fichier != juce::File() ? fichier
+                                                    : dossierMorceaux().getChildFile (fr ("Mon morceau") + extensionMorceau);
+
+        selecteur = std::make_shared<juce::FileChooser> (fr ("Enregistrer le morceau"), depart,
+                                                         juce::String ("*") + extensionMorceau);
+        juce::Component::SafePointer<ComposantPrincipal> moi (this);
+
+        selecteur->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                                    | juce::FileBrowserComponent::warnAboutOverwriting,
+                                [moi, suite] (const juce::FileChooser& fc)
+                                {
+                                    auto f = fc.getResult();
+                                    if (moi == nullptr || f == juce::File())
+                                        return;
+
+                                    if (! f.hasFileExtension (extensionMorceau))
+                                        f = f.withFileExtension (extensionMorceau);
+
+                                    if (moi->ecrire (f) && suite)
+                                        suite();
+                                });
     }
 
     void ouvrirReglagesAudio()
@@ -191,13 +378,14 @@ private:
 class FenetrePrincipale : public juce::DocumentWindow
 {
 public:
-    FenetrePrincipale (te::Engine& engine)
-        : juce::DocumentWindow ("MAO Quack", Couleurs::fond, juce::DocumentWindow::allButtons)
+    FenetrePrincipale (te::Engine& e)
+        : juce::DocumentWindow ("MAO Quack", Couleurs::fond, juce::DocumentWindow::allButtons),
+          engine (e)
     {
         setUsingNativeTitleBar (true);
-        setContentOwned (new ComposantPrincipal (engine), true);
         setResizable (true, false);
         setResizeLimits (900, 560, 10000, 10000);
+        afficher (creerNouveauMorceau (engine), {}, true);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
     }
@@ -205,6 +393,39 @@ public:
     void closeButtonPressed() override
     {
         juce::JUCEApplication::getInstance()->systemRequestedQuit();
+    }
+
+    /** Vérifie qu'on ne perd rien avant de quitter. */
+    void demanderAQuitter()
+    {
+        if (auto* c = dynamic_cast<ComposantPrincipal*> (getContentComponent()))
+            c->verifierPuis ([] { juce::JUCEApplication::quit(); });
+        else
+            juce::JUCEApplication::quit();
+    }
+
+private:
+    te::Engine& engine;
+
+    void afficher (std::unique_ptr<te::Edit> morceau, const juce::File& f, bool ajusterTaille)
+    {
+        clearContentComponent();    // l'ancien morceau est fermé avant d'ouvrir le nouveau
+
+        auto* c = new ComposantPrincipal (engine, std::move (morceau), f);
+        juce::Component::SafePointer<FenetrePrincipale> moi (this);
+
+        c->surRemplacer = [moi] (std::shared_ptr<std::unique_ptr<te::Edit>> suivant, juce::File fichier)
+        {
+            // On attend la fin du clic en cours avant de remplacer le contenu de la fenêtre
+            juce::MessageManager::callAsync ([moi, suivant, fichier]
+            {
+                if (moi != nullptr && *suivant != nullptr)
+                    moi->afficher (std::move (*suivant), fichier, false);
+            });
+        };
+
+        setName ("MAO Quack - " + c->nomDuMorceau());
+        setContentOwned (c, ajusterTaille);
     }
 };
 
@@ -219,6 +440,7 @@ public:
     void initialise (const juce::String&) override
     {
         juce::LookAndFeel::setDefaultLookAndFeel (&apparence);
+        Instruments::preparerSonsBatterie();
         engine = std::make_unique<te::Engine> (getApplicationName());
         fenetre = std::make_unique<FenetrePrincipale> (*engine);
     }
@@ -230,7 +452,13 @@ public:
         juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
     }
 
-    void systemRequestedQuit() override     { quit(); }
+    void systemRequestedQuit() override
+    {
+        if (fenetre != nullptr)
+            fenetre->demanderAQuitter();
+        else
+            quit();
+    }
 
 private:
     ApparenceQuack apparence;

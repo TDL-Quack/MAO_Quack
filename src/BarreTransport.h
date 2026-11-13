@@ -104,15 +104,26 @@ public:
                      fr ("Choisis la sortie du son (casque, enceintes) et le micro. "
                          "Si tu n'entends rien, c'est ici qu'il faut regarder."));
 
+        reglagesAudio.onClick = [this] { if (surReglagesAudio) surReglagesAudio(); };
+
+        addAndMakeVisible (fichier);
+        fichier.setButtonText ("Fichier");
+        fichier.onClick = [this] { if (surFichier) surFichier(); };
+        definirAide (fichier, fr ("Fichier"),
+                     fr ("Pour créer un nouveau morceau, en ouvrir un, ou enregistrer celui-ci. "
+                         "Pense à enregistrer souvent ! Raccourci : Ctrl+S."));
+
         addAndMakeVisible (titre);
-        titre.setText ("MAO Quack", juce::dontSendNotification);
-        titre.setFont (juce::FontOptions (16.0f, juce::Font::bold));
+        titre.setFont (juce::FontOptions (14.0f, juce::Font::bold));
         titre.setColour (juce::Label::textColourId, Couleurs::accent);
 
         startTimerHz (20);
     }
 
-    std::function<void()> surReglagesAudio;
+    std::function<void()> surReglagesAudio, surFichier;
+
+    juce::Component& boutonFichier()                    { return fichier; }
+    void definirTitre (const juce::String& t)           { titre.setText (t, juce::dontSendNotification); }
 
     void lire()
     {
@@ -149,9 +160,10 @@ public:
     {
         auto r = getLocalBounds().reduced (8, 6);
 
-        titre.setBounds (r.removeFromLeft (120));
+        fichier.setBounds (r.removeFromLeft (80));
+        r.removeFromLeft (8);
         reglagesAudio.setBounds (r.removeFromRight (130));
-        reglagesAudio.onClick = [this] { if (surReglagesAudio) surReglagesAudio(); };
+        titre.setBounds (r.removeFromLeft (juce::jmax (60, (r.getWidth() - 400) / 2)));
 
         // Bloc central
         const int largeurBloc = 110 + 8 + 34 + 24 + 40 + 6 + 40 + 16 + 110;
@@ -176,7 +188,7 @@ private:
     BoutonForme metronome { "metronome", BoutonForme::Forme::metronome, Couleurs::accent };
     BoutonForme lecture   { "lecture",   BoutonForme::Forme::lecture,   Couleurs::lecture };
     BoutonForme stop      { "stop",      BoutonForme::Forme::stop,      Couleurs::accent };
-    juce::TextButton reglagesAudio;
+    juce::TextButton reglagesAudio, fichier;
 
     void timerCallback() override
     {

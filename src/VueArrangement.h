@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Commun.h"
+#include "Instruments.h"
 
 //==============================================================================
 /** L'en-tête d'une piste (à droite, comme dans Ableton) : nom, muet, solo, volume. */
@@ -8,9 +9,15 @@ class EnTetePiste : public juce::Component
 {
 public:
     EnTetePiste (te::AudioTrack& t, int index)
-        : piste (t), couleur (Couleurs::dePiste (index))
+        : garde (&t), piste (t), couleur (couleurPiste (t, index))
     {
-        piste.setColour (couleur);
+        addAndMakeVisible (menu);
+        menu.setButtonText ("...");
+        menu.setColour (juce::TextButton::buttonColourId, couleur.darker (0.25f));
+        menu.setColour (juce::TextButton::textColourOffId, juce::Colours::black);
+        menu.onClick = [this] { if (surMenu) surMenu (piste, menu); };
+        definirAide (menu, fr ("Menu de la piste"),
+                     fr ("Pour changer l'instrument de cette piste, ou pour la supprimer."));
 
         addAndMakeVisible (nom);
         nom.setText (piste.getName(), juce::dontSendNotification);
@@ -28,6 +35,7 @@ public:
         muet.setButtonText ("M");
         muet.setClickingTogglesState (true);
         muet.setColour (juce::TextButton::buttonOnColourId, Couleurs::accent);
+        muet.setToggleState (piste.isMuted (false), juce::dontSendNotification);
         muet.onClick = [this] { piste.setMute (muet.getToggleState()); };
         definirAide (muet, fr ("Muet"),
                      fr ("Coupe le son de cette piste sans rien effacer. "
@@ -37,6 +45,7 @@ public:
         solo.setButtonText ("S");
         solo.setClickingTogglesState (true);
         solo.setColour (juce::TextButton::buttonOnColourId, Couleurs::solo);
+        solo.setToggleState (piste.isSolo (false), juce::dontSendNotification);
         solo.onClick = [this] { piste.setSolo (solo.getToggleState()); };
         definirAide (solo, fr ("Solo"),
                      fr ("Fait entendre cette piste toute seule : "
@@ -76,7 +85,9 @@ public:
     void resized() override
     {
         auto r = getLocalBounds().reduced (1);
-        nom.setBounds (r.removeFromTop (24).reduced (4, 0));
+        auto bandeau = r.removeFromTop (24);
+        menu.setBounds (bandeau.removeFromRight (30).reduced (2, 3));
+        nom.setBounds (bandeau.reduced (4, 0));
         r.reduce (6, 6);
 
         auto ligne = r.removeFromTop (juce::jmin (24, r.getHeight()));
@@ -87,11 +98,22 @@ public:
         volume.setBounds (ligne);
     }
 
+    std::function<void (te::AudioTrack&, juce::Component&)> surMenu;
+
+    te::AudioTrack& getPiste()      { return piste; }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu() && surMenu)
+            surMenu (piste, menu);
+    }
+
 private:
+    te::AudioTrack::Ptr garde;      // garde la piste en vie tant que l'en-tête existe
     te::AudioTrack& piste;
     juce::Colour couleur;
     juce::Label nom;
-    juce::TextButton muet, solo;
+    juce::TextButton muet, solo, menu;
     juce::Slider volume;
 };
 
@@ -110,16 +132,21 @@ public:
     {
         setWantsKeyboardFocus (true);
 
-        int i = 0;
-        for (auto* t : te::getAudioTracks (edit))
-            addAndMakeVisible (enTetes.add (new EnTetePiste (*t, i++)));
+        addAndMakeVisible (conteneur);
+        conteneur.addAndMakeVisible (ajouter);
+        ajouter.setButtonText ("+ Ajouter une piste");
+        ajouter.onClick = [this] { menuAjouterPiste(); };
+        definirAide (ajouter, fr ("Ajouter une piste"),
+                     fr ("Ajoute un nouvel instrument à ton morceau : batterie, basse, mélodie..."));
+
+        reconstruireEnTetes();
 
         definirAide (*this, fr ("Arrangement"),
                      fr ("Ton morceau, de gauche à droite. Double-clique sur une piste pour créer un clip "
                          "(un bloc de notes). Glisse un clip pour le déplacer, tire son bord droit pour "
                          "l'allonger. Suppr : effacer. Ctrl+D : dupliquer. Ctrl+C puis Ctrl+V : coller au trait "
                          "de lecture. Ctrl+Z : annuler. "
-                         "Molette : se déplacer. Ctrl + molette : zoomer."));
+                         "Molette : monter/descendre. Maj + molette : avancer/reculer. Ctrl + molette : zoomer."));
 
         startTimerHz (30);
     }
@@ -131,65 +158,35 @@ public:
 
         const auto zone   = zonePistes();
         const auto regle  = zoneRegle();
-        const int nbPistes = enTetes.size();
+        const int nbPistes = te::getAudioTracks (edit).size();
+        const int basPistes = juce::jmin (zone.getBottom(), yPiste (nbPistes));
+        const int premierTemps = juce::jmax (0, (int) std::floor (debutTemps));
+        const int dernierTemps = (int) std::ceil (debutTemps + zone.getWidth() / pxParTemps);
+
+        g.saveState();
+        g.reduceClipRegion (zone);
 
         // Fond des pistes
         for (int i = 0; i < nbPistes; ++i)
         {
             g.setColour (i % 2 == 0 ? Couleurs::piste : Couleurs::pisteAlt);
-            g.fillRect (zone.getX(), zone.getY() + i * hauteurPiste, zone.getWidth(), hauteurPiste);
+            g.fillRect (zone.getX(), yPiste (i), zone.getWidth(), hauteurPiste);
         }
-
-        // Règle
-        g.setColour (Couleurs::panneau);
-        g.fillRect (regle);
 
         // Grille
-        const int basPistes = zone.getY() + nbPistes * hauteurPiste;
-        const int premierTemps = juce::jmax (0, (int) std::floor (debutTemps));
-        const int dernierTemps = (int) std::ceil (debutTemps + zone.getWidth() / pxParTemps);
-
-        // Écart entre les numéros de mesure pour qu'ils restent lisibles
-        int pasMesures = 1;
-        while (pasMesures * tempsParMesure * pxParTemps < 48.0)
-            pasMesures *= 2;
-
-        g.setFont (juce::FontOptions (12.0f));
-
         for (int t = premierTemps; t <= dernierTemps; ++t)
         {
-            const int x = tempsVersX ((double) t);
-            if (x < zone.getX() || x > zone.getRight())
+            const bool debutMesure = (t % tempsParMesure) == 0;
+            if (! debutMesure && pxParTemps < 10.0)
                 continue;
 
-            const bool debutMesure = (t % tempsParMesure) == 0;
-            const int mesure = t / tempsParMesure;
-
-            if (debutMesure)
-            {
-                g.setColour (Couleurs::grilleMesure);
-                g.drawVerticalLine (x, (float) regle.getY(), (float) basPistes);
-
-                if (mesure % pasMesures == 0)
-                {
-                    g.setColour (Couleurs::texte);
-                    g.drawText (juce::String (mesure + 1), x + 4, regle.getY(), 40, regle.getHeight(),
-                                juce::Justification::centredLeft, false);
-                }
-            }
-            else if (pxParTemps >= 10.0)
-            {
-                g.setColour (Couleurs::grille);
-                g.drawVerticalLine (x, (float) zone.getY(), (float) basPistes);
-            }
+            g.setColour (debutMesure ? Couleurs::grilleMesure : Couleurs::grille);
+            g.drawVerticalLine (tempsVersX ((double) t), (float) zone.getY(), (float) basPistes);
         }
 
-        // Séparations horizontales
         g.setColour (Couleurs::bordure);
         for (int i = 0; i <= nbPistes; ++i)
-            g.drawHorizontalLine (zone.getY() + i * hauteurPiste, (float) zone.getX(), (float) zone.getRight());
-
-        g.drawHorizontalLine (regle.getBottom() - 1, (float) regle.getX(), (float) regle.getRight());
+            g.drawHorizontalLine (yPiste (i), (float) zone.getX(), (float) zone.getRight());
 
         // Clips
         auto* choisi = selection.clipValide();
@@ -204,7 +201,7 @@ public:
                     continue;
 
                 auto full = rectangleClip (*clip, numPiste);
-                const auto couleur = Couleurs::dePiste (numPiste);
+                const auto couleur = couleurPiste (*piste, numPiste);
                 const bool estChoisi = (clip == choisi);
 
                 g.saveState();
@@ -257,6 +254,40 @@ public:
             ++numPiste;
         }
 
+        g.restoreState();
+
+        // Règle
+        g.setColour (Couleurs::panneau);
+        g.fillRect (regle);
+
+        int pasMesures = 1;     // écart entre les numéros pour qu'ils restent lisibles
+        while (pasMesures * tempsParMesure * pxParTemps < 48.0)
+            pasMesures *= 2;
+
+        g.setFont (juce::FontOptions (12.0f));
+
+        for (int t = premierTemps - (premierTemps % tempsParMesure); t <= dernierTemps; t += tempsParMesure)
+        {
+            const int x = tempsVersX ((double) t);
+            const int mesure = t / tempsParMesure;
+
+            if (x < regle.getX() || x > regle.getRight())
+                continue;
+
+            g.setColour (Couleurs::grilleMesure);
+            g.drawVerticalLine (x, (float) regle.getY(), (float) regle.getBottom());
+
+            if (mesure % pasMesures == 0)
+            {
+                g.setColour (Couleurs::texte);
+                g.drawText (juce::String (mesure + 1), x + 4, regle.getY(), 40, regle.getHeight(),
+                            juce::Justification::centredLeft, false);
+            }
+        }
+
+        g.setColour (Couleurs::bordure);
+        g.drawHorizontalLine (regle.getBottom() - 1, (float) regle.getX(), (float) regle.getRight());
+
         // Trait de lecture
         const int xLecture = tempsVersX (positionEnTemps());
         if (xLecture >= zone.getX() && xLecture <= zone.getRight())
@@ -282,11 +313,8 @@ public:
 
     void resized() override
     {
-        auto r = getLocalBounds().removeFromRight (largeurEnTete);
-        r.removeFromTop (hauteurRegle);
-
-        for (auto* e : enTetes)
-            e->setBounds (r.removeFromTop (hauteurPiste));
+        conteneur.setBounds (getLocalBounds().removeFromRight (largeurEnTete).withTrimmedTop (hauteurRegle));
+        placerEnTetes();
     }
 
     //==========================================================================
@@ -342,10 +370,10 @@ public:
             if (debut != temps.getStart().inBeats())
                 clip->setStart (edit.tempoSequence.toTime (te::BeatPosition::fromBeats (debut)), false, true);
 
-            const int cible = (e.y - zonePistes().getY()) / hauteurPiste;
+            const int cible = pisteEnY (e.y);
             auto pistes = te::getAudioTracks (edit);
 
-            if (e.y >= zonePistes().getY() && cible < pistes.size()
+            if (cible >= 0 && cible < pistes.size()
                 && cible != Selection::indexPiste (edit, *clip))
                 clip->moveTo (*pistes[cible]);
         }
@@ -378,9 +406,9 @@ public:
     {
         const auto zone = zonePistes();
         auto pistes = te::getAudioTracks (edit);
-        const int numPiste = (e.y - zone.getY()) / hauteurPiste;
+        const int numPiste = pisteEnY (e.y);
 
-        if (e.y < zone.getY() || e.x >= zone.getRight() || numPiste >= pistes.size()
+        if (e.y < zone.getY() || e.x >= zone.getRight() || numPiste < 0 || numPiste >= pistes.size()
             || clipSous (e.getPosition()) != nullptr)
             return;
 
@@ -476,10 +504,15 @@ public:
             pxParTemps = juce::jlimit (3.0, 160.0, pxParTemps * std::pow (1.6, (double) w.deltaY * 3.0));
             debutTemps = juce::jmax (0.0, tempsSouris - (e.x - zonePistes().getX()) / pxParTemps);
         }
-        else
+        else if (e.mods.isShiftDown() || std::abs (w.deltaX) > std::abs (w.deltaY) || defilementMax() <= 0)
         {
             const double delta = std::abs (w.deltaX) > std::abs (w.deltaY) ? w.deltaX : w.deltaY;
             debutTemps = juce::jmax (0.0, debutTemps - delta * 400.0 / pxParTemps);
+        }
+        else
+        {
+            defilementY = juce::jlimit (0, defilementMax(), defilementY - juce::roundToInt (w.deltaY * 250.0f));
+            placerEnTetes();
         }
 
         repaint();
@@ -490,7 +523,174 @@ private:
 
     te::Edit& edit;
     Selection& selection;
+    juce::Component conteneur;              // contient les en-têtes (et les coupe sous la règle)
     juce::OwnedArray<EnTetePiste> enTetes;
+    juce::TextButton ajouter;
+    int defilementY = 0;
+
+    static constexpr int maxPistes = 16;
+
+    int yPiste (int index) const        { return zonePistes().getY() + index * hauteurPiste - defilementY; }
+
+    int pisteEnY (int y) const
+    {
+        if (y < zonePistes().getY())
+            return -1;
+
+        return (y - zonePistes().getY() + defilementY) / hauteurPiste;
+    }
+
+    int defilementMax() const
+    {
+        return juce::jmax (0, enTetes.size() * hauteurPiste + 44 - zonePistes().getHeight());
+    }
+
+    //==========================================================================
+    void reconstruireEnTetes()
+    {
+        enTetes.clear();
+
+        int i = 0;
+        for (auto* t : te::getAudioTracks (edit))
+        {
+            if (t->getColour().isTransparent())
+                t->setColour (Couleurs::dePiste (i));
+
+            auto* e = enTetes.add (new EnTetePiste (*t, i++));
+            e->surMenu = [this] (te::AudioTrack& piste, juce::Component& cible) { menuPiste (piste, cible); };
+            conteneur.addAndMakeVisible (e);
+        }
+
+        ajouter.setEnabled (enTetes.size() < maxPistes);
+        placerEnTetes();
+    }
+
+    void placerEnTetes()
+    {
+        defilementY = juce::jlimit (0, defilementMax(), defilementY);
+        int y = -defilementY;
+
+        for (auto* e : enTetes)
+        {
+            e->setBounds (0, y, conteneur.getWidth(), hauteurPiste);
+            y += hauteurPiste;
+        }
+
+        ajouter.setBounds (8, y + 8, conteneur.getWidth() - 16, 28);
+        repaint();
+    }
+
+    bool pistesOntChange() const
+    {
+        auto pistes = te::getAudioTracks (edit);
+        if (pistes.size() != enTetes.size())
+            return true;
+
+        for (int i = 0; i < pistes.size(); ++i)
+            if (pistes[i] != &enTetes[i]->getPiste())
+                return true;
+
+        return false;
+    }
+
+    //==========================================================================
+    void menuAjouterPiste()
+    {
+        juce::PopupMenu m;
+        m.addSectionHeader (fr ("Quel instrument ?"));
+
+        int id = 1;
+        for (auto type : Instruments::tous())
+            m.addItem (id++, Instruments::nomDe (type));
+
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&ajouter),
+                         [this] (int choix)
+                         {
+                             if (choix > 0)
+                                 ajouterPiste (Instruments::tous()[(size_t) (choix - 1)]);
+                         });
+    }
+
+    void ajouterPiste (Instruments::Type type)
+    {
+        auto pistes = te::getAudioTracks (edit);
+        if (pistes.size() >= maxPistes)
+            return;
+
+        // La première couleur pas encore utilisée
+        int numCouleur = pistes.size();
+        for (int c = 0; c < 8; ++c)
+        {
+            bool prise = false;
+            for (auto* p : pistes)
+                prise = prise || p->getColour() == Couleurs::dePiste (c);
+
+            if (! prise)
+            {
+                numCouleur = c;
+                break;
+            }
+        }
+
+        edit.getUndoManager().beginNewTransaction();
+        te::Track* derniere = pistes.isEmpty() ? nullptr : pistes.getLast();
+
+        if (auto piste = edit.insertNewAudioTrack (te::TrackInsertPoint (nullptr, derniere), nullptr))
+        {
+            piste->setName (Instruments::nomDe (type));
+            piste->setColour (Couleurs::dePiste (numCouleur));
+            Instruments::installer (*piste, type);
+        }
+
+        reconstruireEnTetes();
+        defilementY = defilementMax();
+        placerEnTetes();
+    }
+
+    void menuPiste (te::AudioTrack& piste, juce::Component& cible)
+    {
+        juce::PopupMenu instruments;
+        int id = 1;
+        for (auto type : Instruments::tous())
+            instruments.addItem (id++, Instruments::nomDe (type));
+
+        juce::PopupMenu m;
+        m.addSubMenu (fr ("Changer d'instrument"), instruments);
+        m.addSeparator();
+        m.addItem (100, fr ("Supprimer la piste"), te::getAudioTracks (edit).size() > 1);
+
+        te::AudioTrack::Ptr garde (&piste);
+
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&cible),
+                         [this, garde] (int choix)
+                         {
+                             if (choix <= 0 || ! te::getAudioTracks (edit).contains (garde.get()))
+                                 return;
+
+                             edit.getUndoManager().beginNewTransaction();
+
+                             if (choix == 100)
+                             {
+                                 selection.choisir (nullptr);
+                                 edit.deleteTrack (garde.get());
+                             }
+                             else
+                             {
+                                 const auto type = Instruments::tous()[(size_t) (choix - 1)];
+
+                                 // Si la piste porte encore le nom d'un instrument, on la renomme
+                                 for (auto t : Instruments::tous())
+                                     if (garde->getName() == Instruments::nomDe (t))
+                                         garde->setName (Instruments::nomDe (type));
+
+                                 Instruments::installer (*garde, type);
+                                 selection.sendChangeMessage();
+                             }
+
+                             reconstruireEnTetes();
+                         });
+    }
+
     Mode mode = Mode::rien;
     double decalagePrise = 0.0;
     int compteur = 0;
@@ -506,7 +706,7 @@ private:
         const auto t = tempsDuClip (c);
         const int x1 = tempsVersX (t.getStart().inBeats());
         const int x2 = tempsVersX (t.getEnd().inBeats());
-        return { x1, zonePistes().getY() + numPiste * hauteurPiste + 2, juce::jmax (4, x2 - x1 - 1), hauteurPiste - 4 };
+        return { x1, yPiste (numPiste) + 2, juce::jmax (4, x2 - x1 - 1), hauteurPiste - 4 };
     }
 
     te::MidiClip* clipSous (juce::Point<int> p) const
@@ -516,7 +716,7 @@ private:
             return nullptr;
 
         auto pistes = te::getAudioTracks (edit);
-        const int numPiste = (p.y - zone.getY()) / hauteurPiste;
+        const int numPiste = pisteEnY (p.y);
 
         if (numPiste >= 0 && numPiste < pistes.size())
         {
@@ -568,6 +768,9 @@ private:
 
     void timerCallback() override
     {
+        if (pistesOntChange())      // après un « annuler », par exemple
+            reconstruireEnTetes();
+
         const auto zone = zonePistes();
         int x = tempsVersX (positionEnTemps());
 

@@ -40,6 +40,13 @@ namespace Couleurs
     }
 }
 
+/** La couleur d'une piste (celle enregistrée dans le morceau, sinon une couleur par défaut). */
+inline juce::Colour couleurPiste (const te::Track& piste, int index)
+{
+    const auto c = piste.getColour();
+    return c.isTransparent() ? Couleurs::dePiste (index) : c;
+}
+
 //==============================================================================
 /** Apparence sombre de toute l'application. */
 class ApparenceQuack : public juce::LookAndFeel_V4
