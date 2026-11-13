@@ -117,7 +117,8 @@ public:
         definirAide (*this, fr ("Arrangement"),
                      fr ("Ton morceau, de gauche à droite. Double-clique sur une piste pour créer un clip "
                          "(un bloc de notes). Glisse un clip pour le déplacer, tire son bord droit pour "
-                         "l'allonger. Suppr : effacer. Ctrl+D : dupliquer. Ctrl+Z : annuler. "
+                         "l'allonger. Suppr : effacer. Ctrl+D : dupliquer. Ctrl+C puis Ctrl+V : coller au trait "
+                         "de lecture. Ctrl+Z : annuler. "
                          "Molette : se déplacer. Ctrl + molette : zoomer."));
 
         startTimerHz (30);
@@ -417,6 +418,35 @@ public:
         return false;
     }
 
+    void copierClipChoisi()
+    {
+        clipCopie = selection.clipValide();
+    }
+
+    /** Colle le clip copié sur sa piste, à l'endroit du trait de lecture. */
+    void collerClip()
+    {
+        if (clipCopie == nullptr)
+            return;
+
+        int numPiste = Selection::indexPiste (edit, *clipCopie);
+        if (auto* choisi = selection.clipValide())
+            numPiste = Selection::indexPiste (edit, *choisi);
+
+        auto pistes = te::getAudioTracks (edit);
+        if (numPiste < 0 || numPiste >= pistes.size())
+            numPiste = 0;
+
+        const double longueur = edit.tempoSequence.toBeats (clipCopie->getPosition().time).getLength().inBeats();
+        const juce::String nom = clipCopie->getName();
+
+        if (auto* copie = creerClip (*pistes[numPiste], std::round (positionEnTemps()), longueur))
+        {
+            copie->setName (nom);
+            copie->getSequence().copyFrom (clipCopie->getSequence(), &edit.getUndoManager());
+        }
+    }
+
     void dupliquerClipChoisi()
     {
         auto* clip = selection.clipValide();
@@ -464,6 +494,7 @@ private:
     Mode mode = Mode::rien;
     double decalagePrise = 0.0;
     int compteur = 0;
+    te::MidiClip::Ptr clipCopie;
 
     te::BeatRange tempsDuClip (const te::Clip& c) const
     {

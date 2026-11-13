@@ -68,10 +68,8 @@ public:
 
         if (k == juce::KeyPress::deleteKey || k == juce::KeyPress::backspaceKey)
         {
-            // Dans le piano roll on efface une note, ailleurs le clip choisi
-            if (pianoRoll.hasKeyboardFocus (true))
-                pianoRoll.supprimerNoteChoisie();
-            else
+            // (Le piano roll traite lui-même ses notes quand on travaille dedans.)
+            if (! pianoRoll.hasKeyboardFocus (true))
                 arrangement.supprimerClipChoisi();
             return true;
         }
@@ -81,6 +79,18 @@ public:
         if (mods.isCommandDown() && k.getKeyCode() == 'D')
         {
             arrangement.dupliquerClipChoisi();
+            return true;
+        }
+
+        if (mods.isCommandDown() && k.getKeyCode() == 'C' && ! pianoRoll.hasKeyboardFocus (true))
+        {
+            arrangement.copierClipChoisi();
+            return true;
+        }
+
+        if (mods.isCommandDown() && k.getKeyCode() == 'V' && ! pianoRoll.hasKeyboardFocus (true))
+        {
+            arrangement.collerClip();
             return true;
         }
 
