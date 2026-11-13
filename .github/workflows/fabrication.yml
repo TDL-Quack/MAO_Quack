@@ -1,0 +1,55 @@
+name: Fabrication
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fabrication-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configurer
+        run: cmake -B build -A x64
+
+      - name: Compiler
+        run: cmake --build build --config Release --parallel
+
+      - name: Préparer le fichier à télécharger
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path build -Recurse -Filter "MAO Quack.exe" | Select-Object -First 1
+          if (-not $exe) { throw "MAO Quack.exe introuvable" }
+          New-Item -ItemType Directory -Force -Path "sortie/MAO Quack" | Out-Null
+          Copy-Item $exe.FullName "sortie/MAO Quack/"
+          Compress-Archive -Path "sortie/MAO Quack" -DestinationPath "MAO-Quack-Windows.zip" -Force
+
+      - name: Garder le fichier avec la fabrication
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAO-Quack-Windows
+          path: MAO-Quack-Windows.zip
+
+      - name: Publier dans « Releases »
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dernier-build
+          name: Dernière version (Windows)
+          body: |
+            Dernière version fabriquée automatiquement.
+            Télécharge « MAO-Quack-Windows.zip », décompresse-le, puis lance « MAO Quack.exe ».
+          prerelease: true
+          files: MAO-Quack-Windows.zip
