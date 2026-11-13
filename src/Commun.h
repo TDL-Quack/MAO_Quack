@@ -6,6 +6,7 @@
 #include <array>
 #include <vector>
 #include <cmath>
+#include <complex>
 
 namespace te = tracktion;
 
@@ -141,7 +142,7 @@ private:
 };
 
 //==============================================================================
-/** Le clip choisi par l'utilisateur, partagé entre l'arrangement et le piano roll. */
+/** Le clip et la piste choisis par l'utilisateur, partagés entre toutes les zones. */
 class Selection : public juce::ChangeBroadcaster
 {
 public:
@@ -152,6 +153,23 @@ public:
         if (clip.get() != c)
         {
             clip = c;
+
+            if (c != nullptr)
+            {
+                const int i = indexPiste (edit, *c);
+                if (i >= 0)
+                    piste = te::getAudioTracks (edit)[i];
+            }
+
+            sendChangeMessage();
+        }
+    }
+
+    void choisirPiste (te::AudioTrack* p)
+    {
+        if (piste.get() != p)
+        {
+            piste = p;
             sendChangeMessage();
         }
     }
@@ -161,8 +179,8 @@ public:
     {
         if (clip != nullptr)
         {
-            for (auto* piste : te::getAudioTracks (edit))
-                if (piste->getClips().contains (clip.get()))
+            for (auto* p : te::getAudioTracks (edit))
+                if (p->getClips().contains (clip.get()))
                     return clip.get();
 
             clip = nullptr;
@@ -172,20 +190,61 @@ public:
         return nullptr;
     }
 
+    /** La piste choisie (ou la première s'il n'y en a pas), nullptr si le morceau est vide. */
+    te::AudioTrack* pisteValide()
+    {
+        auto pistes = te::getAudioTracks (edit);
+
+        if (piste != nullptr && pistes.contains (piste.get()))
+            return piste.get();
+
+        piste = pistes.isEmpty() ? nullptr : pistes.getFirst();
+        return piste.get();
+    }
+
     /** Numéro de la piste (0, 1, 2...) qui contient le clip, ou -1. */
     static int indexPiste (te::Edit& e, const te::Clip& c)
     {
         int i = 0;
-        for (auto* piste : te::getAudioTracks (e))
+        for (auto* p : te::getAudioTracks (e))
         {
-            if (piste->getClips().contains (const_cast<te::Clip*> (&c)))
+            if (p->getClips().contains (const_cast<te::Clip*> (&c)))
                 return i;
             ++i;
         }
         return -1;
     }
 
-private:
     te::Edit& edit;
+
+private:
     te::MidiClip::Ptr clip;
+    te::AudioTrack::Ptr piste;
 };
+
+//==============================================================================
+/** Petits réglages gardés d'une fois sur l'autre (les favoris du navigateur). */
+namespace Reglages
+{
+    inline juce::File dossierDonnees()
+    {
+        auto d = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("MAO Quack");
+        d.createDirectory();
+        return d;
+    }
+
+    inline juce::File fichierFavoris()      { return dossierDonnees().getChildFile ("favoris.txt"); }
+
+    inline juce::StringArray lireFavoris()
+    {
+        juce::StringArray f;
+        f.addLines (fichierFavoris().loadFileAsString());
+        f.removeEmptyStrings();
+        return f;
+    }
+
+    inline void ecrireFavoris (const juce::StringArray& f)
+    {
+        fichierFavoris().replaceWithText (f.joinIntoString ("\n"));
+    }
+}

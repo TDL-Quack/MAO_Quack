@@ -2,6 +2,7 @@
 
 #include "Commun.h"
 #include "Instruments.h"
+#include "Effets.h"
 
 //==============================================================================
 /** L'en-tête d'une piste (à droite, comme dans Ableton) : nom, muet, solo, volume. */
@@ -20,6 +21,7 @@ public:
                      fr ("Pour changer l'instrument de cette piste, ou pour la supprimer."));
 
         addAndMakeVisible (nom);
+        nom.addMouseListener (this, false);     // un clic sur le nom choisit aussi la piste
         nom.setText (piste.getName(), juce::dontSendNotification);
         nom.setEditable (false, true);
         nom.setFont (juce::FontOptions (14.0f, juce::Font::bold));
@@ -28,8 +30,8 @@ public:
         nom.setColour (juce::Label::backgroundWhenEditingColourId, couleur.brighter (0.4f));
         nom.onTextChange = [this] { piste.setName (nom.getText()); };
         definirAide (nom, fr ("Nom de la piste"),
-                     fr ("Une piste, c'est un instrument ou un son de ton morceau. "
-                         "Double-clique sur le nom pour le changer."));
+                     fr ("Une piste, c'est un instrument de ton morceau. Clique pour la choisir : son instrument "
+                         "et ses effets s'affichent en bas. Double-clique sur le nom pour le changer."));
 
         addAndMakeVisible (muet);
         muet.setButtonText ("M");
@@ -80,6 +82,21 @@ public:
         g.fillRect (r.removeFromTop (24).reduced (0, 1));
         g.setColour (Couleurs::bordure);
         g.drawRect (getLocalBounds());
+
+        if (choisie)
+        {
+            g.setColour (juce::Colours::white);
+            g.drawRect (getLocalBounds(), 2);
+        }
+    }
+
+    void definirChoisie (bool c)
+    {
+        if (c != choisie)
+        {
+            choisie = c;
+            repaint();
+        }
     }
 
     void resized() override
@@ -99,11 +116,15 @@ public:
     }
 
     std::function<void (te::AudioTrack&, juce::Component&)> surMenu;
+    std::function<void (te::AudioTrack&)> surChoix;
 
     te::AudioTrack& getPiste()      { return piste; }
 
     void mouseDown (const juce::MouseEvent& e) override
     {
+        if (surChoix)
+            surChoix (piste);
+
         if (e.mods.isPopupMenu() && surMenu)
             surMenu (piste, menu);
     }
@@ -114,12 +135,14 @@ private:
     juce::Colour couleur;
     juce::Label nom;
     juce::TextButton muet, solo, menu;
+    bool choisie = false;
     juce::Slider volume;
 };
 
 //==============================================================================
 /** La vue Arrangement : la règle du temps, les pistes et le trait de lecture. */
 class VueArrangement : public juce::Component,
+                       public juce::DragAndDropTarget,
                        private juce::Timer
 {
 public:
@@ -254,6 +277,13 @@ public:
             ++numPiste;
         }
 
+        // Piste visée pendant un glisser-déposer
+        if (pisteSurvolee >= 0 && pisteSurvolee < nbPistes)
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.12f));
+            g.fillRect (zone.getX(), yPiste (pisteSurvolee), zone.getWidth(), hauteurPiste);
+        }
+
         g.restoreState();
 
         // Règle
@@ -330,6 +360,14 @@ public:
             mode = Mode::lecture;
             deplacerLecture (e);
             return;
+        }
+
+        {
+            auto pistes = te::getAudioTracks (edit);
+            const int numPiste = pisteEnY (e.y);
+
+            if (numPiste >= 0 && numPiste < pistes.size())
+                selection.choisirPiste (pistes[numPiste]);
         }
 
         if (auto* clip = clipSous (e.getPosition()))
@@ -415,6 +453,79 @@ public:
         // Un nouveau clip d'une mesure, calé sur le début de la mesure
         const double debut = std::floor (juce::jmax (0.0, xVersTemps (e.x)) / tempsParMesure) * tempsParMesure;
         creerClip (*pistes[numPiste], debut, (double) tempsParMesure);
+    }
+
+    //==========================================================================
+    // Glisser-déposer depuis le navigateur
+
+    bool isInterestedInDragSource (const SourceDetails& d) override
+    {
+        const auto id = d.description.toString();
+        return id.startsWith ("fx:") || id.startsWith ("inst:") || id.startsWith ("preset:");
+    }
+
+    void itemDragMove (const SourceDetails& d) override
+    {
+        const int cible = pisteEnY (d.localPosition.y);
+        if (cible != pisteSurvolee)
+        {
+            pisteSurvolee = cible;
+            repaint();
+        }
+    }
+
+    void itemDragExit (const SourceDetails&) override
+    {
+        pisteSurvolee = -100;
+        repaint();
+    }
+
+    void itemDropped (const SourceDetails& d) override
+    {
+        const auto id = d.description.toString();
+        const int cible = pisteEnY (d.localPosition.y);
+        auto pistes = te::getAudioTracks (edit);
+        pisteSurvolee = -100;
+
+        if (cible >= 0 && cible < pistes.size())
+        {
+            appliquerSurPiste (*pistes[cible], id);
+        }
+        else if (! id.startsWith ("fx:"))
+        {
+            ajouterPiste (id);      // lâché sous les pistes : une nouvelle piste avec cet instrument
+        }
+
+        repaint();
+    }
+
+    /** Met un instrument ou un effet (identifiant du navigateur) sur une piste. */
+    void appliquerSurPiste (te::AudioTrack& piste, const juce::String& id)
+    {
+        edit.getUndoManager().beginNewTransaction();
+        selection.choisirPiste (&piste);
+
+        if (id.startsWith ("fx:"))
+        {
+            Effets::ajouter (piste, id);
+        }
+        else
+        {
+            const auto nouveauNom = Instruments::nomDeLId (id);
+
+            // Si la piste porte encore le nom d'un instrument, on la renomme
+            for (auto& e : Instruments::catalogue())
+                if (piste.getName() == e.nom && nouveauNom.isNotEmpty())
+                {
+                    piste.setName (nouveauNom);
+                    break;
+                }
+
+            Instruments::appliquer (piste, id);
+            reconstruireEnTetes();
+        }
+
+        selection.sendChangeMessage();
     }
 
     //==========================================================================
@@ -527,6 +638,7 @@ private:
     juce::OwnedArray<EnTetePiste> enTetes;
     juce::TextButton ajouter;
     int defilementY = 0;
+    int pisteSurvolee = -100;
 
     static constexpr int maxPistes = 16;
 
@@ -558,6 +670,7 @@ private:
 
             auto* e = enTetes.add (new EnTetePiste (*t, i++));
             e->surMenu = [this] (te::AudioTrack& piste, juce::Component& cible) { menuPiste (piste, cible); };
+            e->surChoix = [this] (te::AudioTrack& piste) { selection.choisirPiste (&piste); };
             conteneur.addAndMakeVisible (e);
         }
 
@@ -594,24 +707,44 @@ private:
     }
 
     //==========================================================================
+    /** Menu des instruments (fournis + préréglages personnels). Renvoie les identifiants dans l'ordre. */
+    static juce::StringArray remplirMenuInstruments (juce::PopupMenu& m, int premierId)
+    {
+        juce::StringArray ids;
+        bool separateurPose = false;
+
+        for (auto& e : Instruments::catalogue())
+        {
+            if (e.utilisateur && ! separateurPose)
+            {
+                m.addSeparator();
+                separateurPose = true;
+            }
+
+            m.addItem (premierId + ids.size(), e.nom);
+            ids.add (e.id);
+        }
+
+        return ids;
+    }
+
     void menuAjouterPiste()
     {
         juce::PopupMenu m;
         m.addSectionHeader (fr ("Quel instrument ?"));
+        const auto ids = remplirMenuInstruments (m, 1);
 
-        int id = 1;
-        for (auto type : Instruments::tous())
-            m.addItem (id++, Instruments::nomDe (type));
+        juce::Component::SafePointer<VueArrangement> moi (this);
 
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&ajouter),
-                         [this] (int choix)
+                         [moi, ids] (int choix)
                          {
-                             if (choix > 0)
-                                 ajouterPiste (Instruments::tous()[(size_t) (choix - 1)]);
+                             if (moi != nullptr && choix > 0 && choix <= ids.size())
+                                 moi->ajouterPiste (ids[choix - 1]);
                          });
     }
 
-    void ajouterPiste (Instruments::Type type)
+    void ajouterPiste (const juce::String& id)
     {
         auto pistes = te::getAudioTracks (edit);
         if (pistes.size() >= maxPistes)
@@ -637,9 +770,10 @@ private:
 
         if (auto piste = edit.insertNewAudioTrack (te::TrackInsertPoint (nullptr, derniere), nullptr))
         {
-            piste->setName (Instruments::nomDe (type));
+            piste->setName (Instruments::nomDeLId (id));
             piste->setColour (Couleurs::dePiste (numCouleur));
-            Instruments::installer (*piste, type);
+            Instruments::appliquer (*piste, id);
+            selection.choisirPiste (piste.get());
         }
 
         reconstruireEnTetes();
@@ -650,44 +784,33 @@ private:
     void menuPiste (te::AudioTrack& piste, juce::Component& cible)
     {
         juce::PopupMenu instruments;
-        int id = 1;
-        for (auto type : Instruments::tous())
-            instruments.addItem (id++, Instruments::nomDe (type));
+        const auto ids = remplirMenuInstruments (instruments, 1);
 
         juce::PopupMenu m;
         m.addSubMenu (fr ("Changer d'instrument"), instruments);
         m.addSeparator();
-        m.addItem (100, fr ("Supprimer la piste"), te::getAudioTracks (edit).size() > 1);
+        m.addItem (1000, fr ("Supprimer la piste"), te::getAudioTracks (edit).size() > 1);
 
         te::AudioTrack::Ptr garde (&piste);
+        juce::Component::SafePointer<VueArrangement> moi (this);
 
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&cible),
-                         [this, garde] (int choix)
+                         [moi, garde, ids] (int choix)
                          {
-                             if (choix <= 0 || ! te::getAudioTracks (edit).contains (garde.get()))
+                             if (moi == nullptr || choix <= 0 || ! te::getAudioTracks (moi->edit).contains (garde.get()))
                                  return;
 
-                             edit.getUndoManager().beginNewTransaction();
-
-                             if (choix == 100)
+                             if (choix == 1000)
                              {
-                                 selection.choisir (nullptr);
-                                 edit.deleteTrack (garde.get());
+                                 moi->edit.getUndoManager().beginNewTransaction();
+                                 moi->selection.choisir (nullptr);
+                                 moi->edit.deleteTrack (garde.get());
+                                 moi->reconstruireEnTetes();
                              }
-                             else
+                             else if (choix <= ids.size())
                              {
-                                 const auto type = Instruments::tous()[(size_t) (choix - 1)];
-
-                                 // Si la piste porte encore le nom d'un instrument, on la renomme
-                                 for (auto t : Instruments::tous())
-                                     if (garde->getName() == Instruments::nomDe (t))
-                                         garde->setName (Instruments::nomDe (type));
-
-                                 Instruments::installer (*garde, type);
-                                 selection.sendChangeMessage();
+                                 moi->appliquerSurPiste (*garde, ids[choix - 1]);
                              }
-
-                             reconstruireEnTetes();
                          });
     }
 
@@ -770,6 +893,12 @@ private:
     {
         if (pistesOntChange())      // après un « annuler », par exemple
             reconstruireEnTetes();
+
+        {
+            auto* choisie = selection.pisteValide();
+            for (auto* e : enTetes)
+                e->definirChoisie (&e->getPiste() == choisie);
+        }
 
         const auto zone = zonePistes();
         int x = tempsVersX (positionEnTemps());

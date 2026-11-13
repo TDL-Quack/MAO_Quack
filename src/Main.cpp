@@ -7,7 +7,9 @@
 #include "VueArrangement.h"
 #include "Panneaux.h"
 #include "Instruments.h"
-#include "PianoRoll.h"
+#include "Effets.h"
+#include "PanneauBas.h"
+#include "Export.h"
 
 static const char* const extensionMorceau = ".quack";
 
@@ -65,7 +67,8 @@ static std::unique_ptr<te::Edit> creerNouveauMorceau (te::Engine& e)
 
 //==============================================================================
 /** Tout le contenu de la fenêtre, pour un morceau donné. */
-class ComposantPrincipal : public juce::Component
+class ComposantPrincipal : public juce::Component,
+                           public juce::DragAndDropContainer
 {
 public:
     ComposantPrincipal (te::Engine& e, std::unique_ptr<te::Edit> morceau, const juce::File& fichierDuMorceau)
@@ -75,13 +78,22 @@ public:
           selection (*edit),
           transport (*edit),
           arrangement (*edit, selection),
-          pianoRoll (*edit, selection)
+          bas (*edit, selection)
     {
         addAndMakeVisible (transport);
         addAndMakeVisible (navigateur);
         addAndMakeVisible (arrangement);
         addAndMakeVisible (aide);
-        addAndMakeVisible (pianoRoll);
+        addAndMakeVisible (bas);
+
+        navigateur.surChoix = [this] (const juce::String& id)
+        {
+            if (auto* piste = selection.pisteValide())
+            {
+                arrangement.appliquerSurPiste (*piste, id);
+                bas.montrer (1);
+            }
+        };
 
         transport.surReglagesAudio = [this] { ouvrirReglagesAudio(); };
         transport.surFichier = [this] { menuFichier(); };
@@ -148,9 +160,9 @@ public:
 
         transport.setBounds (r.removeFromTop (46));
 
-        auto bas = r.removeFromBottom (juce::jlimit (230, 380, (int) (getHeight() * 0.4)));
-        aide.setBounds (bas.removeFromLeft (230));
-        pianoRoll.setBounds (bas);
+        auto zoneBas = r.removeFromBottom (juce::jlimit (260, 346, (int) (getHeight() * 0.44)));
+        aide.setBounds (zoneBas.removeFromLeft (230));
+        bas.setBounds (zoneBas);
 
         navigateur.setBounds (r.removeFromLeft (230));
         arrangement.setBounds (r);
@@ -164,10 +176,16 @@ public:
             return true;
         }
 
+        if (k == juce::KeyPress::tabKey)
+        {
+            bas.basculer();
+            return true;
+        }
+
         if (k == juce::KeyPress::deleteKey || k == juce::KeyPress::backspaceKey)
         {
             // (Le piano roll traite lui-même ses notes quand on travaille dedans.)
-            if (! pianoRoll.hasKeyboardFocus (true))
+            if (! bas.getPianoRoll().hasKeyboardFocus (true))
                 arrangement.supprimerClipChoisi();
             return true;
         }
@@ -176,13 +194,14 @@ public:
         if (! mods.isCommandDown())
             return false;
 
-        const bool dansPianoRoll = pianoRoll.hasKeyboardFocus (true);
+        const bool dansPianoRoll = bas.getPianoRoll().hasKeyboardFocus (true);
 
         switch (k.getKeyCode())
         {
             case 'S':   enregistrer (mods.isShiftDown(), {});                   return true;
             case 'O':   ouvrir();                                               return true;
             case 'N':   nouveau();                                              return true;
+            case 'E':   exporter();                                             return true;
             case 'D':   arrangement.dupliquerClipChoisi();                      return true;
             case 'C':   if (! dansPianoRoll) arrangement.copierClipChoisi();    return true;
             case 'V':   if (! dansPianoRoll) arrangement.collerClip();          return true;
@@ -209,7 +228,7 @@ private:
     Navigateur navigateur;
     VueArrangement arrangement;
     ZoneAide aide;
-    PianoRoll pianoRoll;
+    PanneauBas bas;
 
     std::shared_ptr<juce::FileChooser> selecteur;
 
@@ -229,6 +248,8 @@ private:
         m.addSeparator();
         m.addItem (3, fr ("Enregistrer                    Ctrl+S"));
         m.addItem (4, fr ("Enregistrer sous..."));
+        m.addSeparator();
+        m.addItem (5, fr ("Exporter (WAV, MP3, MIDI)...    Ctrl+E"));
 
         juce::Component::SafePointer<ComposantPrincipal> moi (this);
 
@@ -244,6 +265,7 @@ private:
                                  case 2:  moi->ouvrir();                   break;
                                  case 3:  moi->enregistrer (false, {});    break;
                                  case 4:  moi->enregistrer (true, {});     break;
+                                 case 5:  moi->exporter();                 break;
                                  default: break;
                              }
                          });
@@ -359,6 +381,18 @@ private:
                                 });
     }
 
+    void exporter()
+    {
+        juce::DialogWindow::LaunchOptions o;
+        o.dialogTitle = "Exporter";
+        o.dialogBackgroundColour = Couleurs::panneau;
+        o.content.setOwned (new DialogueExport (*edit, nomDuMorceau()));
+        o.componentToCentreAround = this;
+        o.useNativeTitleBar = true;
+        o.resizable = false;
+        o.launchAsync();
+    }
+
     void ouvrirReglagesAudio()
     {
         juce::DialogWindow::LaunchOptions o;
@@ -441,7 +475,8 @@ public:
     {
         juce::LookAndFeel::setDefaultLookAndFeel (&apparence);
         Instruments::preparerSonsBatterie();
-        engine = std::make_unique<te::Engine> (getApplicationName());
+        engine = std::make_unique<te::Engine> (getApplicationName(), std::make_unique<ComportementQuack>(), nullptr);
+        Effets::declarerTypes (*engine);
         fenetre = std::make_unique<FenetrePrincipale> (*engine);
     }
 

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MAOQuack VERSION 0.4.0 LANGUAGES C CXX)
+project(MAOQuack VERSION 0.5.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -55,3 +55,15 @@ target_link_libraries(MAOQuack PRIVATE
     juce::juce_audio_processors
     juce::juce_audio_utils
     juce::juce_recommended_config_flags)
+
+# Export MP3 : encodeur libre LAME (facultatif ; installé par vcpkg lors de la fabrication)
+find_package(mp3lame CONFIG QUIET)
+
+if (TARGET mp3lame::mp3lame)
+    message(STATUS "MAO Quack : export MP3 active (LAME trouve)")
+    target_link_libraries(MAOQuack PRIVATE mp3lame::mp3lame)
+    target_compile_definitions(MAOQuack PRIVATE QUACK_AVEC_MP3=1)
+else()
+    message(STATUS "MAO Quack : export MP3 desactive (LAME introuvable)")
+    target_compile_definitions(MAOQuack PRIVATE QUACK_AVEC_MP3=0)
+endif()

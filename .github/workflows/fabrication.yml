@@ -22,8 +22,21 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Installer l'encodeur MP3 (LAME)
+        continue-on-error: true
+        shell: pwsh
+        run: vcpkg install mp3lame:x64-windows-static
+
       - name: Configurer
-        run: cmake -B build -A x64
+        id: configurer
+        shell: pwsh
+        run: |
+          cmake -B build -A x64 "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $introuvable = Select-String -Path build/CMakeCache.txt -Pattern "mp3lame_DIR:PATH=.*NOTFOUND" -Quiet
+          $mp3 = if ($introuvable) { "non" } else { "oui" }
+          "mp3=$mp3" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Export MP3 : $mp3"
 
       - name: Compiler
         run: cmake --build build --config Release --parallel
@@ -51,5 +64,6 @@ jobs:
           body: |
             Dernière version fabriquée automatiquement.
             Télécharge « MAO-Quack-Windows.zip », décompresse-le, puis lance « MAO Quack.exe ».
+            Version ${{ github.sha }} - export MP3 : ${{ steps.configurer.outputs.mp3 }}
           prerelease: true
           files: MAO-Quack-Windows.zip

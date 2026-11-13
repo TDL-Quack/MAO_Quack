@@ -322,17 +322,145 @@ namespace Instruments
         }
     }
 
-    /** Met l'instrument choisi sur la piste (et retire l'ancien s'il y en avait un). */
-    inline void installer (te::AudioTrack& piste, Type type)
+    inline const juce::Identifier& idPreset()
+    {
+        static const juce::Identifier id ("quackPreset");
+        return id;
+    }
+
+    inline void retirerInstruments (te::AudioTrack& piste)
     {
         for (auto* p : piste.pluginList.getPlugins())
             if (dynamic_cast<te::SamplerPlugin*> (p) != nullptr || dynamic_cast<te::FourOscPlugin*> (p) != nullptr)
                 p->deleteFromParent();
+    }
+
+    inline te::Plugin* instrumentDe (te::AudioTrack& piste)
+    {
+        for (auto* p : piste.pluginList.getPlugins())
+            if (dynamic_cast<te::SamplerPlugin*> (p) != nullptr || dynamic_cast<te::FourOscPlugin*> (p) != nullptr)
+                return p;
+        return nullptr;
+    }
+
+    /** Met l'instrument choisi sur la piste (et retire l'ancien s'il y en avait un). */
+    inline void installer (te::AudioTrack& piste, Type type)
+    {
+        retirerInstruments (piste);
 
         if (type == Type::batterie)
             installerBatterie (piste);
         else
             installerSynthe (piste, type);
+
+        if (auto* p = instrumentDe (piste))
+            p->state.setProperty (idPreset(), nomDe (type), nullptr);
+    }
+
+    //==========================================================================
+    // Le catalogue : instruments fournis + préréglages enregistrés par l'utilisateur
+
+    struct Entree
+    {
+        juce::String id;        // "inst:basse", "preset:Mon son"...
+        juce::String nom;
+        bool utilisateur = false;
+    };
+
+    inline juce::String idDe (Type t)
+    {
+        static const char* const ids[] = { "inst:batterie", "inst:basse", "inst:melodie", "inst:accords",
+                                           "inst:cloches", "inst:orgue", "inst:jeuvideo" };
+        return ids[(int) t];
+    }
+
+    inline juce::File dossierPresets()
+    {
+        auto d = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                     .getChildFile ("MAO Quack").getChildFile ("Presets");
+        d.createDirectory();
+        return d;
+    }
+
+    inline juce::File fichierPreset (const juce::String& nom)
+    {
+        return dossierPresets().getChildFile (juce::File::createLegalFileName (nom) + ".quackpreset");
+    }
+
+    inline juce::Array<Entree> catalogue()
+    {
+        juce::Array<Entree> liste;
+
+        for (auto t : tous())
+            liste.add ({ idDe (t), nomDe (t), false });
+
+        auto fichiers = dossierPresets().findChildFiles (juce::File::findFiles, false, "*.quackpreset");
+        fichiers.sort();
+
+        for (auto& f : fichiers)
+            liste.add ({ "preset:" + f.getFileNameWithoutExtension(), f.getFileNameWithoutExtension(), true });
+
+        return liste;
+    }
+
+    inline juce::String nomDeLId (const juce::String& id)
+    {
+        for (auto& e : catalogue())
+            if (e.id == id)
+                return e.nom;
+        return {};
+    }
+
+    /** Enregistre les réglages du synthé comme préréglage personnel. */
+    inline bool enregistrerPreset (te::FourOscPlugin& synthe, const juce::String& nom)
+    {
+        static_cast<te::Plugin&> (synthe).flushPluginStateToValueTree();
+        synthe.state.setProperty (idPreset(), nom, nullptr);
+
+        if (auto xml = synthe.state.createXml())
+            return xml->writeTo (fichierPreset (nom));
+
+        return false;
+    }
+
+    /** Met sur la piste l'instrument ou le préréglage désigné par son identifiant. */
+    inline bool appliquer (te::AudioTrack& piste, const juce::String& id)
+    {
+        for (auto t : tous())
+        {
+            if (idDe (t) == id)
+            {
+                installer (piste, t);
+                return true;
+            }
+        }
+
+        if (id.startsWith ("preset:"))
+        {
+            const auto nom = id.fromFirstOccurrenceOf ("preset:", false, false);
+            auto xml = juce::parseXML (fichierPreset (nom));
+
+            if (xml == nullptr)
+                return false;
+
+            const auto etat = juce::ValueTree::fromXml (*xml);
+            retirerInstruments (piste);
+
+            if (auto plugin = piste.edit.getPluginCache().createNewPlugin (te::FourOscPlugin::xmlTypeName, {}))
+            {
+                piste.pluginList.insertPlugin (plugin, 0, nullptr);
+                plugin->restorePluginStateFromValueTree (etat);
+                plugin->state.setProperty (idPreset(), nom, nullptr);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    inline juce::String nomPresetDe (te::Plugin& p)
+    {
+        return p.state.getProperty (idPreset()).toString();
     }
 
     /** Vrai si la piste joue la batterie. */

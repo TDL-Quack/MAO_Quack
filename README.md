@@ -13,7 +13,8 @@ Décompresser, puis lancer `MAO Quack.exe`.
 - [x] Étape 2 : clips, piano roll, batterie et synthés intégrés
 - [x] Sélection multiple et copier-coller des notes
 - [x] Enregistrer / ouvrir un morceau (.quack), ajouter et supprimer des pistes, 7 instruments
-- [ ] Navigateur de sons, effets
+- [x] Synthétiseur complet avec préréglages, effets (EQ, Volume, Compressor sidechain, Delay, Reverb, Distortion)
+- [x] Navigateur avec favoris, export WAV / MP3 / MIDI
 - [ ] Mixage, automation, export
 - [ ] Warping, racks, VST3
 

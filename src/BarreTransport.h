@@ -110,8 +110,8 @@ public:
         fichier.setButtonText ("Fichier");
         fichier.onClick = [this] { if (surFichier) surFichier(); };
         definirAide (fichier, fr ("Fichier"),
-                     fr ("Pour créer un nouveau morceau, en ouvrir un, ou enregistrer celui-ci. "
-                         "Pense à enregistrer souvent ! Raccourci : Ctrl+S."));
+                     fr ("Pour créer un nouveau morceau, en ouvrir un, l'enregistrer, ou l'exporter en fichier son "
+                         "(WAV, MP3) ou MIDI. Pense à enregistrer souvent ! Raccourci : Ctrl+S."));
 
         addAndMakeVisible (titre);
         titre.setFont (juce::FontOptions (14.0f, juce::Font::bold));
