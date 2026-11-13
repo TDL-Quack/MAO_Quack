@@ -11,7 +11,8 @@ public:
     {
         definirAide (*this, fr ("Navigateur"),
                      fr ("La réserve de sons : batteries, instruments, boucles et effets. "
-                         "Bientôt, tu pourras les faire glisser sur une piste."));
+                         "Bientôt, tu pourras les faire glisser sur une piste. "
+                         "Pour l'instant, chaque piste a déjà son instrument."));
     }
 
     void paint (juce::Graphics& g) override

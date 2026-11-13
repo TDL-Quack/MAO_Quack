@@ -3,6 +3,10 @@
 #include <tracktion_engine/tracktion_engine.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include <array>
+#include <vector>
+#include <cmath>
+
 namespace te = tracktion;
 
 /** Texte français (avec accents) -> juce::String. Les sources sont en UTF-8. */
@@ -127,4 +131,54 @@ private:
             repaint();
         }
     }
+};
+
+//==============================================================================
+/** Le clip choisi par l'utilisateur, partagé entre l'arrangement et le piano roll. */
+class Selection : public juce::ChangeBroadcaster
+{
+public:
+    Selection (te::Edit& e) : edit (e) {}
+
+    void choisir (te::MidiClip* c)
+    {
+        if (clip.get() != c)
+        {
+            clip = c;
+            sendChangeMessage();
+        }
+    }
+
+    /** Le clip choisi, ou nullptr s'il n'existe plus (effacé, annulé...). */
+    te::MidiClip* clipValide()
+    {
+        if (clip != nullptr)
+        {
+            for (auto* piste : te::getAudioTracks (edit))
+                if (piste->getClips().contains (clip.get()))
+                    return clip.get();
+
+            clip = nullptr;
+            sendChangeMessage();
+        }
+
+        return nullptr;
+    }
+
+    /** Numéro de la piste (0, 1, 2...) qui contient le clip, ou -1. */
+    static int indexPiste (te::Edit& e, const te::Clip& c)
+    {
+        int i = 0;
+        for (auto* piste : te::getAudioTracks (e))
+        {
+            if (piste->getClips().contains (const_cast<te::Clip*> (&c)))
+                return i;
+            ++i;
+        }
+        return -1;
+    }
+
+private:
+    te::Edit& edit;
+    te::MidiClip::Ptr clip;
 };

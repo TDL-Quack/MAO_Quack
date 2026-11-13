@@ -1,12 +1,14 @@
 /*
     MAO Quack — un petit logiciel de musique pour débuter.
-    Étape 1 : fenêtre principale, moteur audio, transport, pistes.
+    Étape 2 : clips, piano roll, batterie et synthés intégrés.
 */
 
 #include "Commun.h"
 #include "BarreTransport.h"
 #include "VueArrangement.h"
 #include "Panneaux.h"
+#include "Instruments.h"
+#include "PianoRoll.h"
 
 //==============================================================================
 /** Tout le contenu de la fenêtre. */
@@ -16,14 +18,16 @@ public:
     ComposantPrincipal (te::Engine& e)
         : engine (e),
           edit (creerMorceauVide (e)),
+          selection (*edit),
           transport (*edit),
-          arrangement (*edit)
+          arrangement (*edit, selection),
+          pianoRoll (*edit, selection)
     {
         addAndMakeVisible (transport);
         addAndMakeVisible (navigateur);
         addAndMakeVisible (arrangement);
         addAndMakeVisible (aide);
-        addAndMakeVisible (detail);
+        addAndMakeVisible (pianoRoll);
 
         transport.surReglagesAudio = [this] { ouvrirReglagesAudio(); };
 
@@ -46,9 +50,9 @@ public:
 
         transport.setBounds (r.removeFromTop (46));
 
-        auto bas = r.removeFromBottom (170);
+        auto bas = r.removeFromBottom (juce::jlimit (230, 380, (int) (getHeight() * 0.4)));
         aide.setBounds (bas.removeFromLeft (230));
-        detail.setBounds (bas);
+        pianoRoll.setBounds (bas);
 
         navigateur.setBounds (r.removeFromLeft (230));
         arrangement.setBounds (r);
@@ -62,6 +66,36 @@ public:
             return true;
         }
 
+        if (k == juce::KeyPress::deleteKey || k == juce::KeyPress::backspaceKey)
+        {
+            // Dans le piano roll on efface une note, ailleurs le clip choisi
+            if (pianoRoll.hasKeyboardFocus (true))
+                pianoRoll.supprimerNoteChoisie();
+            else
+                arrangement.supprimerClipChoisi();
+            return true;
+        }
+
+        const auto mods = k.getModifiers();
+
+        if (mods.isCommandDown() && k.getKeyCode() == 'D')
+        {
+            arrangement.dupliquerClipChoisi();
+            return true;
+        }
+
+        if (mods.isCommandDown() && (k.getKeyCode() == 'Y' || (k.getKeyCode() == 'Z' && mods.isShiftDown())))
+        {
+            edit->getUndoManager().redo();
+            return true;
+        }
+
+        if (mods.isCommandDown() && k.getKeyCode() == 'Z')
+        {
+            edit->getUndoManager().undo();
+            return true;
+        }
+
         return false;
     }
 
@@ -71,11 +105,13 @@ private:
     te::Engine& engine;
     std::unique_ptr<te::Edit> edit;
 
+    Selection selection;
+
     BarreTransport transport;
     Navigateur navigateur;
     VueArrangement arrangement;
     ZoneAide aide;
-    PanneauDetail detail;
+    PianoRoll pianoRoll;
 
     static std::unique_ptr<te::Edit> creerMorceauVide (te::Engine& e)
     {
@@ -87,16 +123,41 @@ private:
 
         auto ed = te::createEmptyEdit (e, fichier);
 
-        static const char* const noms[] = { "Batterie", "Basse", "Mélodie", "Micro / Sons" };
+        static const char* const noms[] = { "Batterie", "Basse", "Mélodie", "Accords" };
         ed->ensureNumberOfAudioTracks (4);
+        auto pistes = te::getAudioTracks (*ed);
 
-        int i = 0;
-        for (auto* t : te::getAudioTracks (*ed))
-            if (i < 4)
-                t->setName (fr (noms[i++]));
+        for (int i = 0; i < juce::jmin (4, pistes.size()); ++i)
+            pistes[i]->setName (fr (noms[i]));
+
+        if (pistes.size() >= 4)
+        {
+            Instruments::installerBatterie (*pistes[0]);
+            Instruments::installerSynthe (*pistes[1], Instruments::Synthe::basse);
+            Instruments::installerSynthe (*pistes[2], Instruments::Synthe::melodie);
+            Instruments::installerSynthe (*pistes[3], Instruments::Synthe::accords);
+
+            // Un petit rythme pour ne pas partir d'une page blanche
+            const te::BeatRange mesure (te::BeatPosition::fromBeats (0.0), te::BeatPosition::fromBeats (4.0));
+
+            if (auto clip = pistes[0]->insertMIDIClip ("Rythme", ed->tempoSequence.toTime (mesure), nullptr))
+            {
+                auto& seq = clip->getSequence();
+                const int gc = Instruments::premiereNoteBatterie, cc = gc + 1, ch = gc + 2;
+                auto poser = [&seq] (int note, double temps)
+                {
+                    seq.addNote (note, te::BeatPosition::fromBeats (temps), te::BeatDuration::fromBeats (0.25), 100, 0, nullptr);
+                };
+
+                for (double t : { 0.0, 2.0, 2.5 })   poser (gc, t);
+                for (double t : { 1.0, 3.0 })        poser (cc, t);
+                for (int i = 0; i < 8; ++i)          poser (ch, i * 0.5);
+            }
+        }
 
         ed->tempoSequence.getTempo (0)->setBpm (120.0);
-        ed->clickTrackEnabled = true;   // le métronome, pour entendre que le son marche
+        ed->clickTrackEnabled = false;
+        ed->getUndoManager().clearUndoHistory();
 
         return ed;
     }

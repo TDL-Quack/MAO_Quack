@@ -10,8 +10,8 @@ Décompresser, puis lancer `MAO Quack.exe`.
 ## Avancement
 
 - [x] Étape 1 : fenêtre, moteur audio, transport, métronome, pistes, zone d'aide
-- [ ] Clips et piano roll
-- [ ] Instruments et effets intégrés, sons fournis
+- [x] Étape 2 : clips, piano roll, batterie et synthés intégrés
+- [ ] Navigateur de sons, autres instruments, effets, sauvegarde
 - [ ] Mixage, automation, export
 - [ ] Warping, racks, VST3
 
