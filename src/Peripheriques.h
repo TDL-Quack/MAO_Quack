@@ -116,12 +116,11 @@ public:
             g.setColour (juce::Colours::black);
             g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
 
-            // Le titre écrit de bas en haut
+            // Le titre écrit sur la tranche, de bas en haut
             juce::Graphics::ScopedSaveState etat (g);
-            g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi,
-                                                             (float) getWidth() * 0.5f, (float) getHeight() * 0.5f));
-            g.drawText (titre, juce::Rectangle<int> (0, 0, getHeight() - 80, getWidth())
-                                   .withCentre ({ getWidth() / 2, getHeight() / 2 + 30 }),
+            g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi)
+                                .translated (0.0f, (float) getHeight()));
+            g.drawText (titre, juce::Rectangle<int> (8, 0, getHeight() - 80, getWidth()),
                         juce::Justification::centredLeft, true);
         }
         else
@@ -181,7 +180,7 @@ public:
 
         if (auto* conteneur = juce::DragAndDropContainer::findParentDragContainerFor (this))
             if (! conteneur->isDragAndDropActive())
-                conteneur->startDragging ("peripherique", this);
+                conteneur->startDragging ("peripherique", this, imageGlisser (titre, couleur));
     }
 
 protected:
@@ -537,13 +536,35 @@ private:
             auto* o = synthe.oscParams[i];
             const int y = y0 + i * 61;
             const juce::String n (i + 1);
+            const juce::Identifier memoire ("quackOnde" + n);     // la forme d'onde gardée quand l'oscillateur est coupé
 
-            ajouter<EcranOnde> (juce::Rectangle<int> (x0, y + 2, 72, 50),
+            ajouter<Interrupteur> (juce::Rectangle<int> (x0, y + 16, 28, 22), n,
+                                   [o] { return o->waveShapeValue.get() != 0; },
+                                   [this, o, memoire] (bool allume)
+                                   {
+                                       debutGeste();
+
+                                       if (allume)
+                                       {
+                                           const int forme = (int) synthe.state.getProperty (memoire, 1);
+                                           o->waveShapeValue = forme > 0 ? forme : 1;
+                                       }
+                                       else
+                                       {
+                                           synthe.state.setProperty (memoire, o->waveShapeValue.get(), nullptr);
+                                           o->waveShapeValue = 0;
+                                       }
+                                   },
+                                   fr ("Oscillateur ") + n,
+                                   fr ("Allume ou coupe cet oscillateur. Coupe les autres pour l'écouter tout seul : c'est la "
+                                       "meilleure façon de comprendre ce que chacun apporte au son. Sa forme d'onde est gardée en mémoire."));
+
+            ajouter<EcranOnde> (juce::Rectangle<int> (x0 + 32, y + 2, 60, 50),
                                 [o] { return o->waveShapeValue.get(); },
                                 [this, o] (int f) { debutGeste(); o->waveShapeValue = f; },
                                 couleur);
 
-            int x = x0 + 78;
+            int x = x0 + 96;
             potardMod (x, y, o->tune, "Tune", fr ("La hauteur de l'oscillateur ") + n + fr (", en demi-tons. +12 = une octave plus haut, -12 = une octave plus bas."));
             potardMod (x += lp, y, o->fineTune, "Fine", fr ("Accordage très fin. Un tout petit décalage entre deux oscillateurs donne un son plus large. Avec un LFO dessus : vibrato."));
             potardMod (x += lp, y, o->level, "Level", fr ("Le volume de l'oscillateur ") + n + ".");
@@ -575,6 +596,45 @@ private:
         return (float) std::abs (num / den);
     }
 
+    /** Ce que le filtre laisse passer à la fréquence `hz` (en dB), pour une coupure donnée. */
+    float reponseFiltre (float hz, float coupureHz)
+    {
+        const int type = synthe.filterTypeValue.get();
+        if (type == 0)
+            return 0.0f;
+
+        const double fe = 44100.0;
+        const double coupure = juce::jlimit (20.0, 20000.0, (double) coupureHz);
+        const double q = 0.70710678 / (1.0 - (synthe.filterResonance->getCurrentValue() / 100.0) * 0.99);
+        juce::IIRCoefficients c;
+
+        switch (type)
+        {
+            case 1:  c = juce::IIRCoefficients::makeLowPass (fe, coupure, q);       break;
+            case 2:  c = juce::IIRCoefficients::makeHighPass (fe, coupure, q);      break;
+            case 3:  c = juce::IIRCoefficients::makeBandPass (fe, coupure, q);      break;
+            default: c = juce::IIRCoefficients::makeNotchFilter (fe, coupure, q);   break;
+        }
+
+        float m = magnitude (c, hz, fe);
+        if (synthe.filterSlopeValue.get() == 24)
+            m *= m;
+
+        return juce::Decibels::gainToDecibels (m, -60.0f);
+    }
+
+    /** La coupure du filtre en ce moment (en Hz) si une modulation la fait bouger, sinon un nombre négatif. */
+    float frequenceViveDuFiltre()
+    {
+        if (edit().isRendering())
+            return -1.0f;
+
+        const auto positions = synthe.getLiveModulationPositions (synthe.filterFreq);
+        return positions.isEmpty() ? -1.0f : noteVersHz (positions.getFirst() * 135.076232f);
+    }
+
+    te::Edit& edit()                            { return synthe.edit; }
+
     static float noteVersHz (float note)        { return 440.0f * std::pow (2.0f, (note - 69.0f) / 12.0f); }
     static float hzVersNote (float hz)          { return 69.0f + 12.0f * std::log2 (juce::jmax (1.0f, hz) / 440.0f); }
 
@@ -587,29 +647,12 @@ private:
         ecran.debutGeste = [this] { debutGeste(); };
         ecran.courbe = [this] (float hz)
         {
-            const int type = synthe.filterTypeValue.get();
-            if (type == 0)
-                return 0.0f;
-
-            const double fe = 44100.0;
-            const double coupure = juce::jlimit (20.0, 20000.0, (double) noteVersHz (synthe.filterFreq->getCurrentValue()));
-            const double q = 0.70710678 / (1.0 - (synthe.filterResonance->getCurrentValue() / 100.0) * 0.99);
-            juce::IIRCoefficients c;
-
-            switch (type)
-            {
-                case 1:  c = juce::IIRCoefficients::makeLowPass (fe, coupure, q);       break;
-                case 2:  c = juce::IIRCoefficients::makeHighPass (fe, coupure, q);      break;
-                case 3:  c = juce::IIRCoefficients::makeBandPass (fe, coupure, q);      break;
-                default: c = juce::IIRCoefficients::makeNotchFilter (fe, coupure, q);   break;
-            }
-
-            float m = magnitude (c, hz, fe);
-            if (synthe.filterSlopeValue.get() == 24)
-                m *= m;
-
-            return juce::Decibels::gainToDecibels (m, -60.0f);
+            return reponseFiltre (hz, noteVersHz (synthe.filterFreq->getCurrentValue()));
         };
+
+        // La courbe blanche : le filtre tel qu'il bouge en direct sous l'effet d'un LFO ou d'une enveloppe
+        ecran.aCourbeVive = [this] { return frequenceViveDuFiltre() > 0.0f; };
+        ecran.courbeVive = [this] (float hz) { return reponseFiltre (hz, frequenceViveDuFiltre()); };
 
         EcranCourbe::Point pt;
         pt.couleur = Couleurs::accent;
@@ -925,61 +968,67 @@ private:
 class PeripheriqueCompresseur : public Peripherique
 {
 public:
-    PeripheriqueCompresseur (te::CompressorPlugin& p, juce::Colour c)
-        : Peripherique (p, "Compressor", 296, true, c), comp (p)
+    PeripheriqueCompresseur (te::CompressorPlugin& p, te::AudioTrack& t, juce::Colour c)
+        : Peripherique (p, "Compressor", 300, true, c), comp (p), piste (&t)
     {
+        auto* mesure = dynamic_cast<CompresseurQuack*> (&p);     // absent sur les compresseurs d'anciens morceaux
+
         auto& ecran = ajouter<EcranTransfert> (juce::Rectangle<int> (8, 6, 110, 110), c);
         ecran.transfert = [this] (float entree)
         {
             const float seuil = comp.thresholdGain.getCurrentValue();
             return entree <= seuil ? entree : seuil + (entree - seuil) * comp.ratio.getCurrentValue();
         };
+
+        if (mesure != nullptr)
+            ecran.niveauEnDirect = [mesure] { return mesure->niveauEntree.load (std::memory_order_relaxed); };
+
         definirAide (ecran, "Compressor",
                      fr ("De gauche à droite : le niveau qui entre. De bas en haut : le niveau qui sort. Au-dessus du seuil "
-                         "(Threshold), la courbe se couche : les sons forts sont rabaissés."));
+                         "(Threshold), la courbe se couche : les sons forts sont rabaissés. Le point blanc, c'est le son "
+                         "qui passe en ce moment."));
 
-        int x = 126;
+        int x = 124;
         potard (x, 6, comp.thresholdGain.parameter, "Thresh", fr ("Threshold (seuil) : le niveau à partir duquel le compresseur commence à baisser le son."));
         potard (x += lp, 6, comp.ratio.parameter, "Ratio", fr ("La force de la compression. 2:1 = douce, 10:1 = très forte."));
         potard (x += lp, 6, comp.outputDb.parameter, "Output", fr ("Remonte le volume après la compression."));
 
-        x = 126;
+        x = 124;
         potard (x, 62, comp.attackMs.parameter, "Attack", fr ("Le temps de réaction du compresseur. Court : il attrape tout de suite. Long : il laisse passer le début du son."));
         potard (x += lp, 62, comp.releaseMs.parameter, "Release", fr ("Le temps que met le compresseur à relâcher. Pour l'effet « pompe », essaie entre 100 et 300 ms."));
 
+        if (mesure != nullptr)
+        {
+            etiquette (262, 0, "GR", 30);
+            ajouter<EcranReduction> (juce::Rectangle<int> (262, 14, 30, 102),
+                                     [mesure] { return mesure->reductionDb.load (std::memory_order_relaxed); });
+        }
+
         etiquette (8, 124, "SIDECHAIN");
 
-        ajouter<Interrupteur> (juce::Rectangle<int> (8, 142, 84, 24), "Sidechain",
-                               [this] { return comp.useSidechainTrigger.get(); },
-                               [this] (bool b)
-                               {
-                                   debutGeste();
-                                   comp.useSidechainTrigger = b;
-                                   comp.edit.restartPlayback();
-                               },
-                               "Sidechain",
-                               fr ("Quand il est allumé, c'est une AUTRE piste qui déclenche le compresseur. Exemple classique : "
-                                   "la grosse caisse fait baisser la basse ou les accords à chaque coup (effet « pompe »)."));
-
-        sources = &ajouter<ChoixListe> (juce::Rectangle<int> (98, 142, 136, 24), nomsSources(),
-                                        [this] { return juce::jmax (0, nomsSources().indexOf (comp.getSidechainSourceName())); },
+        sources = &ajouter<ChoixListe> (juce::Rectangle<int> (8, 142, 226, 24), nomsSources(),
+                                        [this] { return indexSourceActuelle(); },
                                         [this] (int i)
                                         {
                                             debutGeste();
-                                            const auto noms = nomsSources();
-                                            comp.setSidechainSourceByName (i > 0 && i < noms.size() ? noms[i] : juce::String());
-                                            comp.useSidechainTrigger = (i > 0);
+                                            const auto pistes = pistesSources();
+                                            const bool active = i > 0 && i <= pistes.size();
+
+                                            comp.setSidechainSourceID (active ? pistes[i - 1]->itemID : te::EditItemID());
+                                            comp.useSidechainTrigger = active;
                                             comp.edit.restartPlayback();
                                         },
-                                        "Sidechain Source",
-                                        fr ("La piste qui déclenche le compresseur. Choisis par exemple la batterie."));
+                                        "Sidechain",
+                                        fr ("Choisis une AUTRE piste pour déclencher le compresseur. Exemple classique : la batterie "
+                                            "fait baisser la basse ou les accords à chaque coup (effet « pompe »). "
+                                            "« Aucune » : le compresseur réagit à son propre son."));
 
         potard (242, 130, comp.sidechainDb.parameter, "SC Gain", fr ("Rend le signal de la piste source plus ou moins fort avant qu'il ne déclenche le compresseur."));
 
         dernieresSources = nomsSources();
     }
 
-    /** Les noms des pistes changent : on met la liste à jour. */
+    /** Les pistes changent (ajout, suppression, nouveau nom) : on met la liste à jour. */
     void verifierSources()
     {
         const auto noms = nomsSources();
@@ -992,14 +1041,45 @@ public:
 
 private:
     te::CompressorPlugin& comp;
+    te::AudioTrack::Ptr piste;
     ChoixListe* sources = nullptr;
     juce::StringArray dernieresSources;
 
-    juce::StringArray nomsSources()
+    /** Toutes les pistes sauf celle du compresseur. */
+    juce::Array<te::AudioTrack*> pistesSources() const
     {
-        auto noms = comp.getSidechainSourceNames (false);
-        noms.insert (0, fr ("Aucune"));
+        juce::Array<te::AudioTrack*> liste;
+
+        for (auto* t : te::getAudioTracks (comp.edit))
+            if (t != piste.get())
+                liste.add (t);
+
+        return liste;
+    }
+
+    juce::StringArray nomsSources() const
+    {
+        juce::StringArray noms { fr ("Aucune") };
+
+        for (auto* t : pistesSources())
+            noms.add (t->getName());
+
         return noms;
+    }
+
+    int indexSourceActuelle() const
+    {
+        if (! comp.useSidechainTrigger.get())
+            return 0;
+
+        const auto id = comp.getSidechainSourceID();
+        const auto pistes = pistesSources();
+
+        for (int i = 0; i < pistes.size(); ++i)
+            if (pistes[i]->itemID == id)
+                return i + 1;
+
+        return 0;
     }
 };
 
@@ -1136,7 +1216,7 @@ public:
                      fr ("L'instrument de la piste choisie, suivi de ses effets. Le son va de gauche à droite. "
                          "Glisse ici un instrument ou un effet depuis le navigateur : un trait blanc montre où il se posera."));
 
-        startTimerHz (12);
+        startTimerHz (24);
     }
 
     void paint (juce::Graphics& g) override
@@ -1145,10 +1225,17 @@ public:
 
         if (peripheriques.isEmpty())
         {
+            juce::String message = fr ("Clique sur une piste pour voir son instrument et ses effets.");
+
+            if (auto* piste = selection.pisteValide())
+                message = TypePiste::estAudio (*piste)
+                            ? fr ("Piste audio : pas d'instrument.\nGlisse ici un effet depuis le navigateur, ou clique sur « + Effet ».")
+                            : fr ("Cette piste MIDI n'a pas encore d'instrument.\nGlisse ici un instrument depuis le navigateur "
+                                  "(ou double-clique dessus) : par exemple Quack Synth ou Quack Drums.");
+
             g.setColour (Couleurs::texteDoux);
             g.setFont (juce::FontOptions (14.5f));
-            g.drawFittedText (fr ("Clique sur une piste pour voir son instrument et ses effets."),
-                              getLocalBounds().reduced (20), juce::Justification::centred, 2);
+            g.drawFittedText (message, getLocalBounds().reduced (120, 20), juce::Justification::centred, 4);
         }
     }
 
@@ -1197,7 +1284,7 @@ public:
         {
             Effets::ajouter (*piste, id, position);
         }
-        else
+        else if (! TypePiste::estAudio (*piste))
         {
             Instruments::appliquer (*piste, id);
         }
@@ -1210,7 +1297,7 @@ public:
 
         if (id.startsWith ("fx:"))
             Effets::ajouter (piste, id);
-        else
+        else if (! TypePiste::estAudio (piste))
             Instruments::appliquer (piste, id);
     }
 
@@ -1319,7 +1406,7 @@ private:
                 }
                 else if (auto* batterie = dynamic_cast<te::SamplerPlugin*> (plugin))    p = new PeripheriqueBatterie (*batterie, *piste, couleur);
                 else if (auto* eq = dynamic_cast<te::EqualiserPlugin*> (plugin))        p = new PeripheriqueEQ (*eq, couleur);
-                else if (auto* comp = dynamic_cast<te::CompressorPlugin*> (plugin))     p = new PeripheriqueCompresseur (*comp, couleur);
+                else if (auto* comp = dynamic_cast<te::CompressorPlugin*> (plugin))     p = new PeripheriqueCompresseur (*comp, *piste, couleur);
                 else if (auto* delay = dynamic_cast<te::DelayPlugin*> (plugin))         p = new PeripheriqueDelay (*delay, couleur);
                 else if (auto* reverb = dynamic_cast<te::ReverbPlugin*> (plugin))       p = new PeripheriqueReverb (*reverb, couleur);
                 else if (auto* disto = dynamic_cast<DistorsionQuack*> (plugin))         p = new PeripheriqueDistorsion (*disto, couleur);

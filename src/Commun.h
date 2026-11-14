@@ -142,13 +142,44 @@ private:
 };
 
 //==============================================================================
+/** Une piste est soit MIDI (des notes jouées par un instrument), soit audio (des sons enregistrés). */
+namespace TypePiste
+{
+    inline const juce::Identifier& id()
+    {
+        static const juce::Identifier i ("quackType");
+        return i;
+    }
+
+    inline bool estAudio (const te::Track& piste)       { return piste.state.getProperty (id()).toString() == "audio"; }
+    inline void definirAudio (te::Track& piste, bool a) { piste.state.setProperty (id(), a ? "audio" : "midi", nullptr); }
+}
+
+/** Fabrique la petite étiquette qui suit la souris pendant un glisser-déposer. */
+inline juce::ScaledImage imageGlisser (const juce::String& texte, juce::Colour couleur)
+{
+    const juce::Font police { juce::FontOptions (14.0f, juce::Font::bold) };
+    const int largeur = juce::jlimit (60, 260, juce::roundToInt (juce::GlyphArrangement::getStringWidth (police, texte)) + 24);
+    juce::Image image (juce::Image::ARGB, largeur, 24, true);
+
+    juce::Graphics g (image);
+    g.setColour (couleur.withAlpha (0.9f));
+    g.fillRoundedRectangle (0.0f, 0.0f, (float) largeur, 24.0f, 5.0f);
+    g.setColour (juce::Colours::black);
+    g.setFont (police);
+    g.drawText (texte, 0, 0, largeur, 24, juce::Justification::centred, true);
+
+    return juce::ScaledImage (image);
+}
+
+//==============================================================================
 /** Le clip et la piste choisis par l'utilisateur, partagés entre toutes les zones. */
 class Selection : public juce::ChangeBroadcaster
 {
 public:
     Selection (te::Edit& e) : edit (e) {}
 
-    void choisir (te::MidiClip* c)
+    void choisir (te::Clip* c)
     {
         if (clip.get() != c)
         {
@@ -174,8 +205,8 @@ public:
         }
     }
 
-    /** Le clip choisi, ou nullptr s'il n'existe plus (effacé, annulé...). */
-    te::MidiClip* clipValide()
+    /** Le clip choisi (MIDI ou audio), ou nullptr s'il n'existe plus (effacé, annulé...). */
+    te::Clip* clipValide()
     {
         if (clip != nullptr)
         {
@@ -189,6 +220,9 @@ public:
 
         return nullptr;
     }
+
+    /** Le clip choisi si c'est un clip de notes, sinon nullptr. */
+    te::MidiClip* clipMidiValide()      { return dynamic_cast<te::MidiClip*> (clipValide()); }
 
     /** La piste choisie (ou la première s'il n'y en a pas), nullptr si le morceau est vide. */
     te::AudioTrack* pisteValide()
@@ -218,7 +252,7 @@ public:
     te::Edit& edit;
 
 private:
-    te::MidiClip::Ptr clip;
+    te::Clip::Ptr clip;
     te::AudioTrack::Ptr piste;
 };
 

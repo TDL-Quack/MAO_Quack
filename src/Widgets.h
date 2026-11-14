@@ -121,7 +121,47 @@ public:
         };
 
         definirAide (*this, nomAffiche, aide + fr (" Glisse vers le haut ou le bas pour régler ; double-clic : valeur de départ."));
+        bouton.addMouseListener (this, false);      // pour le clic droit (délier une modulation)
         rafraichir();
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (! e.mods.isPopupMenu() || modulation.nombreSources == 0 || ! modulation.lire)
+            return;
+
+        // Clic droit : la liste des modulations posées sur ce potard, pour les retirer
+        juce::PopupMenu m;
+        int nombre = 0;
+
+        for (int i = 0; i < modulation.nombreSources; ++i)
+        {
+            if (modulation.lire (i) >= -1.5f)
+            {
+                m.addItem (i + 1, fr ("Délier ") + (modulation.nom ? modulation.nom (i) : juce::String ("la modulation")));
+                ++nombre;
+            }
+        }
+
+        if (nombre == 0)
+            m.addItem (1000, fr ("Aucune modulation sur ce potard"), false);
+        else if (nombre > 1)
+            m.addItem (999, fr ("Tout délier"));
+
+        juce::Component::SafePointer<Potard> moi (this);
+
+        m.showMenuAsync (juce::PopupMenu::Options(), [moi] (int choix)
+        {
+            if (moi == nullptr || choix <= 0 || ! moi->modulation.effacer)
+                return;
+
+            for (int i = 0; i < moi->modulation.nombreSources; ++i)
+                if ((choix == 999 || choix == i + 1) && moi->modulation.lire (i) >= -1.5f)
+                    moi->modulation.effacer (i);
+
+            moi->rafraichir();
+            moi->repaint();
+        });
     }
 
     void rafraichir() override
@@ -224,7 +264,7 @@ private:
             const auto nomSource = potard.modulation.nom ? potard.modulation.nom (source) : juce::String ("Modulation");
             definirAide (*this, nomSource + " -> " + potard.nom,
                          fr ("Cette pastille montre que ") + nomSource + fr (" fait bouger ce réglage. Glisse-la vers le haut "
-                             "ou le bas pour doser la force (vers le bas : sens inverse). Double-clic : retirer la modulation."));
+                             "ou le bas pour doser la force (vers le bas : sens inverse). Clic droit ou double-clic : délier."));
             setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
         }
 
@@ -236,8 +276,18 @@ private:
             g.drawEllipse (getLocalBounds().toFloat().reduced (0.5f), 1.0f);
         }
 
-        void mouseDown (const juce::MouseEvent&) override
+        void mouseDown (const juce::MouseEvent& e) override
         {
+            if (e.mods.isPopupMenu())
+            {
+                // Clic droit : délier tout de suite
+                if (potard.modulation.effacer)
+                    potard.modulation.effacer (source);
+
+                potard.repaint();
+                return;
+            }
+
             if (potard.lien.debutGeste)
                 potard.lien.debutGeste();
 
@@ -246,6 +296,9 @@ private:
 
         void mouseDrag (const juce::MouseEvent& e) override
         {
+            if (e.mods.isPopupMenu())
+                return;
+
             if (potard.modulation.ecrire)
                 potard.modulation.ecrire (source, juce::jlimit (-1.0f, 1.0f, depart - (float) e.getDistanceFromDragStartY() / 100.0f));
 
@@ -349,7 +402,7 @@ public:
 
         if (auto* conteneur = juce::DragAndDropContainer::findParentDragContainerFor (this))
             if (! conteneur->isDragAndDropActive())
-                conteneur->startDragging ("mod:" + juce::String (source), this);
+                conteneur->startDragging ("mod:" + juce::String (source), this, imageGlisser (nom, couleur));
     }
 
 private:
@@ -844,6 +897,8 @@ public:
     EcranCourbe (float bas, float haut, juce::Colour c) : plageBas (bas), plageHaut (haut), couleur (c) {}
 
     std::function<float (float)> courbe;            // fréquence (Hz) -> valeur (entre bas et haut)
+    std::function<float (float)> courbeVive;        // la même, telle qu'elle bouge en direct (modulations)
+    std::function<bool()> aCourbeVive;              // vrai quand il y a un mouvement à montrer
     std::function<void()> debutGeste;
     std::vector<Point> points;
     bool tracerZero = true;
@@ -907,6 +962,26 @@ public:
             g.fillPath (rempli);
             g.setColour (couleur);
             g.strokePath (p, juce::PathStrokeType (1.6f));
+
+            // En blanc, par-dessus : la courbe telle qu'elle bouge en ce moment sous l'effet des modulations
+            if (courbeVive && aCourbeVive && aCourbeVive())
+            {
+                juce::Path vive;
+
+                for (int k = 0; k <= n; ++k)
+                {
+                    const float prop = (float) k / (float) n;
+                    const float x = z.getX() + z.getWidth() * prop;
+                    const float y = yDe (courbeVive (frequenceDepuis (prop)));
+
+                    if (k == 0)   vive.startNewSubPath (x, y);
+                    else          vive.lineTo (x, y);
+                }
+
+                g.setColour (juce::Colours::white);
+                g.strokePath (vive, juce::PathStrokeType (1.4f));
+            }
+
             g.restoreState();
         }
 
@@ -998,6 +1073,7 @@ public:
     EcranTransfert (juce::Colour c) : couleur (c) {}
 
     std::function<float (float)> transfert;     // entrée 0..1 (ou -1..1 si bipolaire) -> sortie
+    std::function<float()> niveauEnDirect;      // le niveau qui entre en ce moment (0..1), pour le montrer sur la courbe
     bool bipolaire = false;
 
     void rafraichir() override      { repaint(); }
@@ -1038,8 +1114,63 @@ public:
 
         g.setColour (couleur);
         g.strokePath (p, juce::PathStrokeType (1.8f));
+
+        // Un point blanc se promène sur la courbe : c'est le son qui passe en ce moment
+        if (niveauEnDirect)
+        {
+            const float entree = juce::jlimit (0.0f, 1.0f, niveauEnDirect());
+
+            if (entree > 0.002f)
+            {
+                const float sortie = juce::jlimit (mini, 1.0f, transfert (entree));
+                g.setColour (juce::Colours::white);
+                g.fillEllipse (juce::Rectangle<float> (7.0f, 7.0f)
+                                   .withCentre ({ z.getX() + z.getWidth() * (entree - mini) / (1.0f - mini),
+                                                  z.getBottom() - z.getHeight() * (sortie - mini) / (1.0f - mini) }));
+            }
+        }
     }
 
 private:
     juce::Colour couleur;
+};
+
+//==============================================================================
+/** Barre de réduction de gain : elle descend quand le compresseur baisse le son. */
+class EcranReduction : public juce::Component,
+                       public Rafraichissable
+{
+public:
+    EcranReduction (std::function<float()> lireReductionDb) : lire (std::move (lireReductionDb))
+    {
+        definirAide (*this, "Gain Reduction",
+                     fr ("Montre l'action du compresseur : la barre orange descend quand il baisse le son, et de combien "
+                         "(en dB). Si elle ne bouge jamais, baisse le Threshold. Avec le sidechain, tu la vois « pomper » "
+                         "à chaque coup de la piste source."));
+    }
+
+    void rafraichir() override      { repaint(); }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (1.0f);
+        g.setColour (Couleurs::bordure);
+        g.fillRoundedRectangle (r, 3.0f);
+
+        const float reduction = lire ? juce::jlimit (-24.0f, 0.0f, lire()) : 0.0f;
+        auto barre = r.reduced (4.0f, 4.0f).withTrimmedBottom (14.0f);
+
+        g.setColour (Couleurs::grille);
+        g.fillRect (barre);
+        g.setColour (Couleurs::accent);
+        g.fillRect (barre.withHeight (barre.getHeight() * (-reduction / 24.0f)));
+
+        g.setColour (Couleurs::texte);
+        g.setFont (juce::FontOptions (9.5f));
+        g.drawText (juce::String (juce::roundToInt (reduction)), getLocalBounds().removeFromBottom (15),
+                    juce::Justification::centred, false);
+    }
+
+private:
+    std::function<float()> lire;
 };

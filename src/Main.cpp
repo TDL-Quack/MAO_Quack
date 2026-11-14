@@ -202,6 +202,7 @@ public:
             case 'N':   nouveau();                                              return true;
             case 'E':   exporter();                                             return true;
             case 'D':   arrangement.dupliquerClipChoisi();                      return true;
+            case 'L':   arrangement.bouclerSurClip();                           return true;
             case 'C':   if (! dansPianoRoll) arrangement.copierClipChoisi();    return true;
             case 'V':   if (! dansPianoRoll) arrangement.collerClip();          return true;
             case 'Y':   edit->getUndoManager().redo();                          return true;
@@ -247,7 +248,7 @@ public:
     enum Commande
     {
         cmdNouveau = 1, cmdOuvrir, cmdEnregistrer, cmdEnregistrerSous, cmdExporter, cmdQuitter,
-        cmdAnnuler = 20, cmdRetablir, cmdDupliquerClip, cmdSupprimerClip, cmdCopierClip, cmdCollerClip,
+        cmdAnnuler = 20, cmdRetablir, cmdDupliquerClip, cmdSupprimerClip, cmdCopierClip, cmdCollerClip, cmdBouclerClip,
         cmdVoirNotes = 30, cmdVoirInstrument,
         cmdReglagesAudio = 40,
         cmdRaccourcis = 50, cmdJournal, cmdAPropos
@@ -292,6 +293,8 @@ public:
                 ajouter (cmdCollerClip, fr ("Coller le clip au trait de lecture"), "Ctrl+V");
                 ajouter (cmdDupliquerClip, fr ("Dupliquer le clip"), "Ctrl+D", selection.clipValide() != nullptr);
                 ajouter (cmdSupprimerClip, fr ("Supprimer le clip"), "Suppr", selection.clipValide() != nullptr);
+                m.addSeparator();
+                ajouter (cmdBouclerClip, fr ("Boucler sur le clip choisi"), "Ctrl+L", selection.clipValide() != nullptr);
                 break;
 
             case 2:
@@ -332,6 +335,7 @@ public:
             case cmdCollerClip:         arrangement.collerClip();                   break;
             case cmdDupliquerClip:      arrangement.dupliquerClipChoisi();          break;
             case cmdSupprimerClip:      arrangement.supprimerClipChoisi();          break;
+            case cmdBouclerClip:        arrangement.bouclerSurClip();               break;
             case cmdVoirNotes:          bas.montrer (0);                            break;
             case cmdVoirInstrument:     bas.montrer (1);                            break;
             case cmdReglagesAudio:      ouvrirReglagesAudio();                      break;
@@ -357,6 +361,7 @@ private:
                                   "Dans l'arrangement :\n"
                                   "Double-clic : créer un clip     Suppr : l'effacer\n"
                                   "Ctrl+C / Ctrl+V / Ctrl+D : copier / coller / dupliquer le clip\n"
+                                  "Ctrl + glisser : dupliquer un clip (ou des notes)     Ctrl+L : boucler sur le clip\n"
                                   "Molette : monter et descendre     Maj+molette : avancer et reculer\n"
                                   "Ctrl+molette : zoomer\n\n"
                                   "Dans le piano roll :\n"

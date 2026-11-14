@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MAOQuack VERSION 0.6.0 LANGUAGES C CXX)
+project(MAOQuack VERSION 0.7.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -35,6 +35,7 @@ target_include_directories(MAOQuack PRIVATE src)
 
 target_compile_definitions(MAOQuack PRIVATE
     MAOQUACK_VERSION="${PROJECT_VERSION}"
+    JUCE_USE_MP3AUDIOFORMAT=1
     JUCE_PLUGINHOST_VST3=1
     JUCE_PLUGINHOST_AU=1
     JUCE_USE_CURL=0

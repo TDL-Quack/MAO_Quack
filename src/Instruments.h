@@ -170,11 +170,11 @@ namespace Instruments
         }
     }
 
-    enum class Type { batterie, basse, melodie, accords, cloches, orgue, jeuVideo };
+    enum class Type { batterie, basse, melodie, accords, cloches, orgue, jeuVideo, init };
 
-    inline const std::array<Type, 7>& tous()
+    inline const std::array<Type, 8>& tous()
     {
-        static const std::array<Type, 7> t {{ Type::batterie, Type::basse, Type::melodie, Type::accords,
+        static const std::array<Type, 8> t {{ Type::batterie, Type::init, Type::basse, Type::melodie, Type::accords,
                                               Type::cloches, Type::orgue, Type::jeuVideo }};
         return t;
     }
@@ -190,6 +190,7 @@ namespace Instruments
             case Type::cloches:     return "Cloches";
             case Type::orgue:       return "Orgue";
             case Type::jeuVideo:    return fr ("Jeu vidéo");
+            case Type::init:        return "Init";
         }
         return {};
     }
@@ -321,6 +322,18 @@ namespace Instruments
                 regler (s->masterLevel, -16.0f);
                 break;
 
+            case Type::init:
+                // Le son de base : une seule onde en dents de scie, sans filtre ni effet. Le point de départ
+                // idéal pour fabriquer son propre son.
+                o1.waveShapeValue = scie;
+                s->filterTypeValue = 0;
+                regler (s->ampAttack, 0.003f);
+                regler (s->ampDecay, 0.2f);
+                regler (s->ampSustain, 80.0f);
+                regler (s->ampRelease, 0.1f);
+                regler (s->masterLevel, -14.0f);
+                break;
+
             case Type::batterie:
                 break;
         }
@@ -376,7 +389,7 @@ namespace Instruments
     inline juce::String idDe (Type t)
     {
         static const char* const ids[] = { "inst:batterie", "inst:basse", "inst:melodie", "inst:accords",
-                                           "inst:cloches", "inst:orgue", "inst:jeuvideo" };
+                                           "inst:cloches", "inst:orgue", "inst:jeuvideo", "inst:init" };
         return ids[(int) t];
     }
 

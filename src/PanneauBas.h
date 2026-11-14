@@ -98,7 +98,7 @@ private:
     juce::TextButton ongletNotes, ongletInstrument;
     int onglet = 0;
 
-    te::MidiClip* dernierClip = nullptr;
+    te::Clip* dernierClip = nullptr;
     te::AudioTrack* dernierePiste = nullptr;
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override

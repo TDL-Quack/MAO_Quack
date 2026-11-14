@@ -295,9 +295,23 @@ namespace Export
 
     /** Lance l'export de tous les formats demandés dans le dossier choisi.
         Renvoie un message d'erreur, ou une chaîne vide si tout va bien. */
+    /** Vrai pendant qu'un export est en cours (pour ne jamais en lancer deux à la fois). */
+    inline bool& enCours()
+    {
+        static bool b = false;
+        return b;
+    }
+
     inline juce::String executer (te::Edit& edit, const juce::Array<Format>& formats, bool parPiste, const juce::File& dossier,
                                   const juce::String& nomDuMorceau, juce::StringArray& fichiersEcrits)
     {
+        if (enCours())
+        {
+            Journal::ecrire ("Export : deja en cours, demande ignoree");
+            return fr ("Un export est déjà en cours.");
+        }
+
+        const juce::ScopedValueSetter<bool> garde (enCours(), true);
         Journal::ecrire ("Export : debut, dossier = " + dossier.getFullPathName() + ", par piste = " + juce::String (parPiste ? "oui" : "non"));
 
         const double finEnTemps = finDuMorceauEnTemps (edit);
@@ -392,6 +406,11 @@ public:
         preparer (parPiste, fr ("Une piste par fichier (avec ses effets)"), 2);
         entier.setToggleState (true, juce::dontSendNotification);
 
+        addAndMakeVisible (nomFichier);
+        nomFichier.setText (nom, juce::dontSendNotification);
+        nomFichier.setFont (juce::FontOptions (14.0f));
+        nomFichier.setSelectAllWhenFocused (true);
+
         addAndMakeVisible (exporter);
         exporter.setButtonText ("Exporter...");
         exporter.setColour (juce::TextButton::buttonColourId, Couleurs::accent);
@@ -404,7 +423,7 @@ public:
         message.setFont (juce::FontOptions (13.0f));
         message.setMinimumHorizontalScale (1.0f);
 
-        setSize (500, 400);
+        setSize (500, 460);
     }
 
     void paint (juce::Graphics& g) override
@@ -414,6 +433,7 @@ public:
         g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
         g.drawText (fr ("Formats (tu peux en cocher plusieurs)"), 16, 10, 400, 20, juce::Justification::centredLeft);
         g.drawText ("Contenu", 16, 122, 300, 20, juce::Justification::centredLeft);
+        g.drawText ("Nom du fichier", 16, 206, 300, 20, juce::Justification::centredLeft);
     }
 
     void resized() override
@@ -423,8 +443,9 @@ public:
         midi.setBounds (16, 86, getWidth() - 32, 24);
         entier.setBounds (16, 146, getWidth() - 32, 24);
         parPiste.setBounds (16, 172, getWidth() - 32, 24);
-        exporter.setBounds (16, 212, 140, 32);
-        message.setBounds (16, 254, getWidth() - 32, getHeight() - 262);
+        nomFichier.setBounds (16, 230, getWidth() - 32, 26);
+        exporter.setBounds (16, 272, 140, 32);
+        message.setBounds (16, 314, getWidth() - 32, getHeight() - 322);
     }
 
 private:
@@ -432,6 +453,7 @@ private:
     juce::String nomDuMorceau;
     juce::ToggleButton wav, mp3, midi, entier, parPiste;
     juce::TextButton exporter;
+    juce::TextEditor nomFichier;
     juce::Label message;
     std::shared_ptr<juce::FileChooser> selecteur;
 
@@ -470,19 +492,25 @@ private:
 
     void lancer (juce::Array<Export::Format> formats, bool pistes, const juce::File& dossier)
     {
+        if (Export::enCours())
+            return;
+
+        auto nom = juce::File::createLegalFileName (nomFichier.getText().trim());
+        if (nom.isEmpty())
+            nom = nomDuMorceau;
+
         message.setText (fr ("Export en cours... ne touche à rien pendant le calcul."), juce::dontSendNotification);
         exporter.setEnabled (false);
         juce::Component::SafePointer<DialogueExport> moi (this);
 
-        // On laisse l'écran afficher « en cours » avant de commencer le calcul
-        juce::Timer::callAfterDelay (80, [moi, formats, pistes, dossier]
+        // Un message unique : il laisse l'écran afficher « en cours » avant le calcul, et ne peut pas se répéter
+        juce::MessageManager::callAsync ([moi, formats, pistes, dossier, nom]
         {
             if (moi == nullptr)
                 return;
 
             juce::StringArray ecrits;
             auto& morceau = moi->edit;
-            const auto nom = moi->nomDuMorceau;
 
             const auto erreur = Export::executer (morceau, formats, pistes, dossier, nom, ecrits);
 

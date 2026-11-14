@@ -118,7 +118,11 @@ public:
             survol = i;
             const auto lignes = lignesVisibles();
 
-            if (i >= 0 && i < lignes.size() && ! lignes[i].dossier)
+            if (i >= 0 && i < lignes.size() && lignes[i].dossier && lignes[i].id.isNotEmpty())
+                definirAide (*this, lignes[i].nom,
+                             lignes[i].description + fr (" Clique pour ouvrir ou fermer le dossier. Tu peux aussi le glisser sur "
+                                                         "une piste (ou double-cliquer) pour poser l'instrument avec son son de base."));
+            else if (i >= 0 && i < lignes.size() && ! lignes[i].dossier)
                 definirAide (*this, lignes[i].nom,
                              lignes[i].description + fr (" Double-clic : le mettre sur la piste choisie. Tu peux aussi le glisser "
                                                          "sur une piste ou dans la chaîne d'effets. L'étoile l'ajoute aux favoris."));
@@ -197,10 +201,12 @@ public:
         const int i = ligneEnPosition (e.getMouseDownPosition());
         const auto lignes = lignesVisibles();
 
-        if (i >= 0 && i < lignes.size() && ! lignes[i].dossier)
+        // On emporte seulement une petite étiquette, pas tout le navigateur
+        if (i >= 0 && i < lignes.size() && lignes[i].id.isNotEmpty())
             if (auto* conteneur = juce::DragAndDropContainer::findParentDragContainerFor (this))
                 if (! conteneur->isDragAndDropActive())
-                    conteneur->startDragging (lignes[i].id, this);
+                    conteneur->startDragging (lignes[i].id, this,
+                                              imageGlisser (lignes[i].nom, lignes[i].effet ? Couleurs::dePiste (3) : Couleurs::dePiste (5)));
     }
 
     void mouseDoubleClick (const juce::MouseEvent& e) override
@@ -211,7 +217,7 @@ public:
         const int i = ligneEnPosition (e.getPosition());
         const auto lignes = lignesVisibles();
 
-        if (i >= 0 && i < lignes.size() && ! lignes[i].dossier && surChoix)
+        if (i >= 0 && i < lignes.size() && lignes[i].id.isNotEmpty() && surChoix)
             surChoix (lignes[i].id);
     }
 
@@ -248,6 +254,7 @@ private:
         if (id == "inst:cloches")   return fr ("Un son de cloche qui s'éteint doucement.");
         if (id == "inst:orgue")     return fr ("Un orgue, au son plein et constant.");
         if (id == "inst:jeuvideo")  return fr ("Un son carré, comme dans les vieux jeux vidéo.");
+        if (id == "inst:init")      return fr ("Le son de base du synthé, tout simple : le point de départ pour fabriquer ton propre son.");
         return fr ("Un de tes préréglages personnels. Clic droit : le supprimer.");
     }
 
@@ -276,13 +283,15 @@ private:
         }
     }
 
-    static Ligne dossier (int profondeur, const juce::String& nom, const juce::String& description)
+    /** Un dossier. S'il a un identifiant, on peut aussi le glisser comme un instrument (son de base). */
+    static Ligne dossier (int profondeur, const juce::String& nom, const juce::String& description, const juce::String& id = {})
     {
         Ligne l;
         l.profondeur = profondeur;
         l.dossier = true;
         l.nom = nom;
         l.description = description;
+        l.id = id;
         return l;
     }
 
@@ -305,13 +314,13 @@ private:
         lignes.add (dossier (0, "Instruments", fr ("Ce qui fabrique le son d'une piste.")));
         if (ouverts.contains ("Instruments"))
         {
-            lignes.add (dossier (1, "Quack Synth", fr ("Le synthétiseur : chaque préréglage est un son tout prêt, que tu peux ensuite modifier.")));
+            lignes.add (dossier (1, "Quack Synth", fr ("Le synthétiseur : chaque préréglage est un son tout prêt, que tu peux ensuite modifier."), "inst:init"));
             if (ouverts.contains ("Quack Synth"))
                 for (auto& e : elements)
                     if (! e.effet && e.id != "inst:batterie")
                         ajouterElement (e, 2);
 
-            lignes.add (dossier (1, "Quack Drums", fr ("La boîte à rythmes : des sons de batterie rangés sur des pads.")));
+            lignes.add (dossier (1, "Quack Drums", fr ("La boîte à rythmes : des sons de batterie rangés sur des pads."), "inst:batterie"));
             if (ouverts.contains ("Quack Drums"))
                 for (auto& e : elements)
                     if (e.id == "inst:batterie")

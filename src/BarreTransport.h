@@ -90,6 +90,25 @@ public:
         definirAide (stop, fr ("Stop"),
                      fr ("Arrête le morceau. Clique une deuxième fois pour revenir au début."));
 
+        addAndMakeVisible (boucle);
+        boucle.setButtonText ("Boucle");
+        boucle.setClickingTogglesState (true);
+        boucle.setWantsKeyboardFocus (false);
+        boucle.setColour (juce::TextButton::buttonOnColourId, Couleurs::accent);
+        boucle.onClick = [this]
+        {
+            auto& t = edit.getTransport();
+
+            // Pas encore de zone de boucle : on prend les 4 premières mesures
+            if (boucle.getToggleState() && t.getLoopRange().getLength().inSeconds() < 0.01)
+                t.setLoopRange (edit.tempoSequence.toTime (te::BeatRange (te::BeatPosition::fromBeats (0.0),
+                                                                          te::BeatPosition::fromBeats (16.0))));
+            t.looping = boucle.getToggleState();
+        };
+        definirAide (boucle, "Boucle",
+                     fr ("Fait tourner en boucle la zone marquée par la barre orange, tout en haut de la règle. Pour choisir "
+                         "cette zone : glisse la souris tout en haut de la règle, ou choisis un clip et fais Ctrl+L."));
+
         addAndMakeVisible (position);
         position.setJustificationType (juce::Justification::centred);
         position.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 17.0f, juce::Font::bold));
@@ -138,7 +157,7 @@ public:
         auto r = getLocalBounds().reduced (8, 5);
 
         // Bloc central
-        const int largeurBloc = 110 + 8 + 34 + 24 + 40 + 6 + 40 + 16 + 110;
+        const int largeurBloc = 110 + 8 + 34 + 24 + 40 + 6 + 40 + 16 + 110 + 12 + 70;
         auto c = r.withSizeKeepingCentre (juce::jmin (largeurBloc, r.getWidth()), r.getHeight());
 
         tempo.setBounds (c.removeFromLeft (110));
@@ -150,12 +169,15 @@ public:
         stop.setBounds (c.removeFromLeft (40));
         c.removeFromLeft (16);
         position.setBounds (c.removeFromLeft (110));
+        c.removeFromLeft (12);
+        boucle.setBounds (c.removeFromLeft (70));
     }
 
 private:
     te::Edit& edit;
 
     juce::Label position;
+    juce::TextButton boucle;
     juce::Slider tempo;
     BoutonForme metronome { "metronome", BoutonForme::Forme::metronome, Couleurs::accent };
     BoutonForme lecture   { "lecture",   BoutonForme::Forme::lecture,   Couleurs::lecture };
@@ -165,6 +187,7 @@ private:
     {
         auto& t = edit.getTransport();
         lecture.setToggleState (t.isPlaying(), juce::dontSendNotification);
+        boucle.setToggleState (t.looping.get(), juce::dontSendNotification);
 
         const auto bb = edit.tempoSequence.toBarsAndBeats (t.getPosition());
         const int temps = (int) std::floor (bb.beats.inBeats()) + 1;

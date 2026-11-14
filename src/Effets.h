@@ -171,6 +171,60 @@ private:
 inline const char* VolumeQuack::xmlTypeName = "quackVolume";
 
 //==============================================================================
+/** Compresseur : celui du moteur, auquel on ajoute une mesure de son action
+    (de combien il baisse le son à chaque instant) pour pouvoir l'afficher. */
+class CompresseurQuack : public te::CompressorPlugin
+{
+public:
+    static const char* getPluginName()      { return "Compressor"; }
+    static const char* xmlTypeName;
+
+    CompresseurQuack (te::PluginCreationInfo info) : te::CompressorPlugin (info) {}
+
+    juce::String getPluginType() override   { return xmlTypeName; }
+
+    void applyToBuffer (const te::PluginRenderContext& fc) override
+    {
+        if (fc.destBuffer == nullptr || fc.bufferNumSamples <= 0)
+            return;
+
+        const int canaux = juce::jmin (2, fc.destBuffer->getNumChannels());
+        float avant = 0.0f, apres = 0.0f;
+
+        for (int c = 0; c < canaux; ++c)
+            avant = juce::jmax (avant, fc.destBuffer->getMagnitude (c, fc.bufferStartSample, fc.bufferNumSamples));
+
+        te::CompressorPlugin::applyToBuffer (fc);
+
+        for (int c = 0; c < canaux; ++c)
+            apres = juce::jmax (apres, fc.destBuffer->getMagnitude (c, fc.bufferStartSample, fc.bufferNumSamples));
+
+        // La réduction = ce qui sort par rapport à ce qui entre, sans compter le gain de sortie
+        float reduction = 0.0f;
+
+        if (avant > 0.0005f && isEnabled())
+        {
+            const float sortie = juce::Decibels::decibelsToGain (outputDb.getCurrentValue());
+            reduction = juce::jlimit (-40.0f, 0.0f, juce::Decibels::gainToDecibels (apres / (avant * sortie), -40.0f));
+        }
+
+        // Descente rapide, remontée douce : plus lisible à l'écran
+        const float precedente = reductionDb.load (std::memory_order_relaxed);
+        reductionDb.store (reduction < precedente ? reduction : precedente + (reduction - precedente) * 0.25f,
+                           std::memory_order_relaxed);
+        niveauEntree.store (avant, std::memory_order_relaxed);
+    }
+
+    std::atomic<float> reductionDb { 0.0f };       ///< de combien le son est baissé, en dB (0 = pas du tout)
+    std::atomic<float> niveauEntree { 0.0f };      ///< le niveau qui entre (0..1)
+
+private:
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CompresseurQuack)
+};
+
+inline const char* CompresseurQuack::xmlTypeName = "quackCompresseur";
+
+//==============================================================================
 /** Oscilloscope : ne change pas le son, il en garde une copie pour l'afficher en temps réel.
     Il est placé automatiquement juste après le synthé et n'apparaît pas dans la chaîne. */
 class OscilloQuack : public te::Plugin
@@ -248,7 +302,7 @@ namespace Effets
               VolumeQuack::xmlTypeName },
             { "fx:comp",   "Compressor", "Compresseur : rapproche les sons forts et les sons faibles. Avec le sidechain, "
                                          "une autre piste (la grosse caisse par exemple) fait baisser celle-ci : l'effet « pompe ».",
-              te::CompressorPlugin::xmlTypeName },
+              CompresseurQuack::xmlTypeName },
             { "fx:delay",  "Delay",      "Écho : le son se répète, de moins en moins fort.",
               te::DelayPlugin::xmlTypeName },
             { "fx:reverb", "Reverb",     "Réverbération : donne l'impression de jouer dans une grande salle.",
@@ -273,6 +327,7 @@ namespace Effets
         engine.getPluginManager().createBuiltInType<DistorsionQuack>();
         engine.getPluginManager().createBuiltInType<VolumeQuack>();
         engine.getPluginManager().createBuiltInType<OscilloQuack>();
+        engine.getPluginManager().createBuiltInType<CompresseurQuack>();
     }
 
     inline bool estInstrument (te::Plugin& p)
@@ -286,7 +341,9 @@ namespace Effets
         for (auto& e : tous())
             if (type == e.type)
                 return true;
-        return false;
+
+        // Les compresseurs des morceaux enregistrés avec une version plus ancienne
+        return type == te::CompressorPlugin::xmlTypeName;
     }
 
     /** Les instruments et effets de la piste, dans l'ordre où le son les traverse. */

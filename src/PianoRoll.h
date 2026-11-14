@@ -24,6 +24,24 @@ public:
                          "Ctrl+C copier, Ctrl+V coller, Ctrl+X couper, Ctrl+D dupliquer, Ctrl+A tout choisir. "
                          "Flèches : déplacer. Suppr : effacer."));
 
+        addChildComponent (menuLongueur);
+        menuLongueur.addItemList ({ "1 mesure", "2 mesures", "4 mesures", "8 mesures", "16 mesures" }, 1);
+        menuLongueur.setWantsKeyboardFocus (false);
+        menuLongueur.onChange = [this]
+        {
+            static const int mesures[] = { 1, 2, 4, 8, 16 };
+            const int i = menuLongueur.getSelectedItemIndex();
+
+            if (auto* clip = selection.clipMidiValide(); clip != nullptr && i >= 0 && i < 5)
+            {
+                edit.getUndoManager().beginNewTransaction();
+                clip->setEnd (edit.tempoSequence.toTime (te::BeatPosition::fromBeats (debutClip (*clip) + mesures[i] * 4.0)), false);
+            }
+        };
+        definirAide (menuLongueur, fr ("Longueur du clip"),
+                     fr ("Choisis la longueur du clip, en mesures (une mesure = 4 temps). Si tu raccourcis, les notes qui "
+                         "dépassent ne sont pas effacées : elles reviennent quand tu rallonges."));
+
         addChildComponent (crayon);
         crayon.setButtonText (fr ("Crayon (B)"));
         crayon.setClickingTogglesState (true);
@@ -46,10 +64,28 @@ public:
     {
         g.fillAll (Couleurs::panneau);
 
-        auto* clip = selection.clipValide();
+        auto* clip = selection.clipMidiValide();
         auto titre = getLocalBounds().removeFromTop (hauteurTitre);
 
         crayon.setVisible (clip != nullptr);
+        menuLongueur.setVisible (clip != nullptr);
+
+        if (auto* son = dynamic_cast<te::WaveAudioClip*> (selection.clipValide()))
+        {
+            // Un clip audio n'a pas de notes : on affiche simplement de quoi il s'agit
+            g.setColour (Couleurs::texte);
+            g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
+            g.drawFittedText (fr ("Clip audio : ") + son->getName(), getLocalBounds().reduced (20).removeFromTop (60),
+                              juce::Justification::centred, 2);
+            g.setColour (Couleurs::texteDoux);
+            g.setFont (juce::FontOptions (13.5f));
+            g.drawFittedText (fr ("Un clip audio joue un son enregistré : il n'a pas de notes à modifier.\n"
+                                  "Dans l'arrangement, glisse-le pour le déplacer et tire son bord droit pour le raccourcir."),
+                              getLocalBounds().reduced (20).withTrimmedTop (60), juce::Justification::centredTop, 4);
+            g.setColour (Couleurs::bordure);
+            g.drawRect (getLocalBounds());
+            return;
+        }
 
         if (clip == nullptr)
         {
@@ -76,13 +112,35 @@ public:
         g.fillRect (titre.removeFromLeft (6));
         g.setColour (Couleurs::texte);
         g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
-        g.drawText (clip->getName(), titre.reduced (8, 0), juce::Justification::centredLeft, true);
+        titre.removeFromLeft (132);     // la place du menu « longueur »
+        g.drawText (clip->getName(), titre.reduced (8, 0).removeFromLeft (150), juce::Justification::centredLeft, true);
+
+        if (ligneSurvolee >= 0 && ligneSurvolee < (int) lignes.size())
+        {
+            // La note sous la souris
+            const auto nomNote = estBatterie ? nomsLignes[ligneSurvolee]
+                                             : nomDeNote (lignes[(size_t) ligneSurvolee]);
+            g.setColour (Couleurs::accent);
+            g.drawText (nomNote, titre.reduced (8, 0).withTrimmedLeft (156).removeFromLeft (170),
+                        juce::Justification::centredLeft, true);
+        }
+
+        // Le menu de longueur reflète la longueur réelle du clip
+        {
+            const double mesures = longueur_ (*clip) / 4.0;
+            const juce::String texte = (std::abs (mesures - std::round (mesures)) < 0.01 ? juce::String (juce::roundToInt (mesures))
+                                                                                          : juce::String (mesures, 2))
+                                         + (mesures > 1.01 ? " mesures" : " mesure");
+            if (! menuLongueur.isPopupActive() && menuLongueur.getText() != texte)
+                menuLongueur.setText (texte, juce::dontSendNotification);
+        }
+
         g.setColour (Couleurs::texteDoux);
         g.setFont (juce::FontOptions (12.5f));
         g.drawText (crayon.getToggleState()
                         ? fr ("Clic : poser une note   •   Clic sur une note : l'effacer")
                         : fr ("Double-clic : poser / effacer   •   Glisser : sélectionner   •   Ctrl+C / Ctrl+V : copier / coller"),
-                    titre.withTrimmedRight (110).reduced (8, 0), juce::Justification::centredRight, true);
+                    titre.withTrimmedRight (110).withTrimmedLeft (330).reduced (8, 0), juce::Justification::centredRight, true);
 
         g.saveState();
         g.reduceClipRegion (zone.getUnion (clavier));
@@ -106,9 +164,17 @@ public:
             // Clavier / noms des sons
             auto touche = juce::Rectangle<int> (clavier.getX(), y, clavier.getWidth(), hauteurLigne - 1);
 
+            const bool survolee = (i == ligneSurvolee);
+
+            if (survolee)
+            {
+                g.setColour (juce::Colours::white.withAlpha (0.06f));
+                g.fillRect (zone.getX(), y, zone.getWidth(), hauteurLigne);
+            }
+
             if (estBatterie)
             {
-                g.setColour (note == noteApercu ? couleur : Couleurs::panneauClair);
+                g.setColour (note == noteApercu ? couleur : survolee ? Couleurs::panneauClair.brighter (0.2f) : Couleurs::panneauClair);
                 g.fillRect (touche);
                 g.setColour (note == noteApercu ? juce::Colours::black : Couleurs::texte);
                 g.setFont (juce::FontOptions (12.5f));
@@ -119,10 +185,16 @@ public:
                 g.setColour (note == noteApercu ? couleur : (noire ? juce::Colour (0xff222222) : juce::Colour (0xffe8e8e8)));
                 g.fillRect (touche);
 
-                if (estDo)
+                if (survolee)
                 {
-                    g.setColour (juce::Colours::black);
-                    g.setFont (juce::FontOptions (10.5f));
+                    g.setColour (Couleurs::accent.withAlpha (0.55f));
+                    g.fillRect (touche);
+                }
+
+                if (estDo || survolee)
+                {
+                    g.setColour (noire && ! survolee ? juce::Colours::white : juce::Colours::black);
+                    g.setFont (juce::FontOptions (10.5f, survolee ? juce::Font::bold : juce::Font::plain));
                     g.drawText (juce::MidiMessage::getMidiNoteName (note, true, true, 3),
                                 touche.reduced (4, 0), juce::Justification::centredRight, false);
                 }
@@ -199,6 +271,7 @@ public:
     void resized() override
     {
         crayon.setBounds (getWidth() - 104, 3, 98, hauteurTitre - 6);
+        menuLongueur.setBounds (10, 3, 122, hauteurTitre - 6);
         ajusterLignes();
     }
 
@@ -206,7 +279,7 @@ public:
     void mouseDown (const juce::MouseEvent& e) override
     {
         mode = Mode::rien;
-        auto* clip = selection.clipValide();
+        auto* clip = selection.clipMidiValide();
         if (clip == nullptr)
             return;
 
@@ -227,7 +300,8 @@ public:
         validerChoix (*clip);
 
         auto* n = noteSous (*clip, e.getPosition());
-        const bool ajout = e.mods.isShiftDown() || e.mods.isCommandDown();
+        const bool ajout = e.mods.isShiftDown();
+        duplicationFaite = false;
 
         if (n != nullptr && (e.mods.isPopupMenu() || crayon.getToggleState()))
         {
@@ -283,7 +357,7 @@ public:
 
     void mouseDrag (const juce::MouseEvent& e) override
     {
-        auto* clip = selection.clipValide();
+        auto* clip = selection.clipMidiValide();
         if (clip == nullptr || mode == Mode::rien)
             return;
 
@@ -321,6 +395,17 @@ public:
             const double dT = juce::jlimit (-minDebut, juce::jmax (-minDebut, longueur - maxFin), deltaBrut);
             const int dL = juce::jlimit (-minLigne, juce::jmax (-minLigne, (int) lignes.size() - 1 - maxLigne),
                                          ligneSansBorne (e.y) - lignePrise);
+
+            // Ctrl + glisser : on laisse une copie des notes à leur place d'origine, comme dans Ableton
+            if (e.mods.isCommandDown() && ! duplicationFaite && (dT != 0.0 || dL != 0))
+            {
+                duplicationFaite = true;
+
+                for (auto& o : origines)
+                    if (notes.contains (o.note))
+                        clip->getSequence().addNote (lignes[(size_t) o.ligne], te::BeatPosition::fromBeats (o.debut),
+                                                     te::BeatDuration::fromBeats (o.duree), o.note->getVelocity(), 0, &um);
+            }
 
             for (auto& o : origines)
             {
@@ -373,7 +458,7 @@ public:
 
     void mouseDoubleClick (const juce::MouseEvent& e) override
     {
-        auto* clip = selection.clipValide();
+        auto* clip = selection.clipMidiValide();
         if (clip == nullptr || crayon.getToggleState() || ! zoneGrille().contains (e.getPosition()))
             return;
 
@@ -394,11 +479,18 @@ public:
         repaint();
     }
 
+    void mouseExit (const juce::MouseEvent&) override
+    {
+        ligneSurvolee = -1;
+        repaint();
+    }
+
     void mouseMove (const juce::MouseEvent& e) override
     {
         bool bord = false;
+        ligneSurvolee = ligneEnY (e.y);
 
-        if (auto* clip = selection.clipValide())
+        if (auto* clip = selection.clipMidiValide())
             if (auto* n = noteSous (*clip, e.getPosition()))
             {
                 const auto r = rectangleNote (*clip, *n);
@@ -421,7 +513,7 @@ public:
     //==========================================================================
     bool keyPressed (const juce::KeyPress& k) override
     {
-        auto* clip = selection.clipValide();
+        auto* clip = selection.clipMidiValide();
         if (clip == nullptr)
             return false;
 
@@ -462,7 +554,7 @@ public:
     /** Efface les notes choisies. Renvoie faux s'il n'y en avait pas. */
     bool supprimerNotesChoisies()
     {
-        auto* clip = selection.clipValide();
+        auto* clip = selection.clipMidiValide();
         if (clip == nullptr)
             return false;
 
@@ -498,6 +590,18 @@ private:
     double longueurParDefaut = 0.5;
 
     juce::TextButton crayon;
+    juce::ComboBox menuLongueur;
+    int ligneSurvolee = -1;
+    bool duplicationFaite = false;
+
+    /** Le nom d'une note, à l'anglaise et à la française (C3 / Do). */
+    static juce::String nomDeNote (int note)
+    {
+        static const char* const francais[] = { "Do", "Do#", "Ré", "Ré#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si" };
+        return juce::MidiMessage::getMidiNoteName (note, true, true, 3) + "  (" + fr (francais[note % 12]) + ")";
+    }
+
+    double longueur_ (const te::Clip& c) const   { return longueurClip (c); }
     juce::Array<te::MidiNote*> notesChoisies, choixAvantLasso;
     std::vector<Origine> origines;
     std::vector<NoteCopiee> pressePapiers;
@@ -768,7 +872,7 @@ private:
         nomsLignes.clear();
         estBatterie = false;
 
-        auto* clip = selection.clipValide();
+        auto* clip = selection.clipMidiValide();
         if (clip == nullptr)
             return;
 
@@ -851,7 +955,7 @@ private:
             arreterApercu();
 
         // Le clip a pu changer de piste (donc d'instrument)
-        auto* clip = selection.clipValide();
+        auto* clip = selection.clipMidiValide();
         const int numPiste = clip != nullptr ? Selection::indexPiste (edit, *clip) : -1;
 
         if (numPiste != dernierePiste)
@@ -867,7 +971,7 @@ private:
     {
         notesChoisies.clearQuick();
         pointInsertion = -1.0;
-        auto* clip = selection.clipValide();
+        auto* clip = selection.clipMidiValide();
         dernierePiste = clip != nullptr ? Selection::indexPiste (edit, *clip) : -1;
         ajusterLignes (true);
         repaint();
