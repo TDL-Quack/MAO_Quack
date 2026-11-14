@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Commun.h"
+#include "Vst.h"
 
 //==============================================================================
 /** Distorsion : pousse le son dans une courbe qui l'écrase (saturation). */
@@ -332,7 +333,13 @@ namespace Effets
 
     inline bool estInstrument (te::Plugin& p)
     {
-        return dynamic_cast<te::SamplerPlugin*> (&p) != nullptr || dynamic_cast<te::FourOscPlugin*> (&p) != nullptr;
+        if (dynamic_cast<te::SamplerPlugin*> (&p) != nullptr || dynamic_cast<te::FourOscPlugin*> (&p) != nullptr)
+            return true;
+
+        if (auto* externe = dynamic_cast<te::ExternalPlugin*> (&p))
+            return externe->isSynth();
+
+        return false;
     }
 
     inline bool estEffetConnu (te::Plugin& p)
@@ -341,6 +348,10 @@ namespace Effets
         for (auto& e : tous())
             if (type == e.type)
                 return true;
+
+        // Les effets VST
+        if (auto* externe = dynamic_cast<te::ExternalPlugin*> (&p))
+            return ! externe->isSynth();
 
         // Les compresseurs des morceaux enregistrés avec une version plus ancienne
         return type == te::CompressorPlugin::xmlTypeName;
@@ -413,11 +424,17 @@ namespace Effets
     /** Ajoute un effet dans la chaîne de la piste, à la position voulue (-1 = à la fin). */
     inline te::Plugin::Ptr ajouter (te::AudioTrack& piste, const juce::String& id, int positionDansChaine = -1)
     {
-        const auto* info = trouver (id);
-        if (info == nullptr)
-            return {};
+        te::Plugin::Ptr plugin;
 
-        auto plugin = piste.edit.getPluginCache().createNewPlugin (info->type, {});
+        if (id.startsWith ("vstfx:"))
+        {
+            plugin = Vst::creer (piste.edit, id);       // un effet VST
+        }
+        else if (const auto* info = trouver (id))
+        {
+            plugin = piste.edit.getPluginCache().createNewPlugin (info->type, {});
+        }
+
         if (plugin == nullptr)
             return {};
 

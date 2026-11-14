@@ -1187,6 +1187,54 @@ public:
 };
 
 //==============================================================================
+/** Un plugin VST : un bouton pour ouvrir sa fenêtre, et ses premiers réglages en potards. */
+class PeripheriqueExterne : public Peripherique
+{
+public:
+    PeripheriqueExterne (te::ExternalPlugin& p, juce::Colour c)
+        : Peripherique (p, p.getName(), 16 + 4 * lp + 8, ! p.isSynth(), c), externe (p)
+    {
+        auto& ouvrir = ajouter<juce::TextButton> (juce::Rectangle<int> (10, 8, 4 * lp, 28), fr ("Ouvrir la fenêtre du plugin"));
+        ouvrir.setWantsKeyboardFocus (false);
+        ouvrir.setColour (juce::TextButton::buttonColourId, Couleurs::accent);
+        ouvrir.setColour (juce::TextButton::textColourOffId, juce::Colours::black);
+        ouvrir.onClick = [this] { externe.showWindowExplicitly(); };
+        definirAide (ouvrir, fr ("Fenêtre du plugin"),
+                     fr ("Ouvre l'interface du plugin VST dans sa propre fenêtre, avec tous ses réglages."));
+
+        auto& info = ajouter<juce::Label> (juce::Rectangle<int> (10, 40, 4 * lp, 32));
+        info.setFont (juce::FontOptions (11.0f));
+        info.setColour (juce::Label::textColourId, Couleurs::texteDoux);
+        info.setJustificationType (juce::Justification::centred);
+        info.setInterceptsMouseClicks (false, false);
+
+        if (externe.isMissing())
+        {
+            info.setText (fr ("Plugin introuvable sur cet ordinateur."), juce::dontSendNotification);
+            ouvrir.setEnabled (false);
+            return;
+        }
+
+        info.setText ("VST3  -  " + externe.getVendor(), juce::dontSendNotification);
+
+        // Les 12 premiers réglages du plugin, directement accessibles (et automatisables)
+        int n = 0;
+        for (auto param : externe.getAutomatableParameters())
+        {
+            if (n >= 12)
+                break;
+
+            potard (10 + (n % 4) * lp, 78 + (n / 4) * (hp + 8), param, param->getParameterName().substring (0, 9),
+                    fr ("Un réglage du plugin : ") + param->getParameterName() + ".");
+            ++n;
+        }
+    }
+
+private:
+    te::ExternalPlugin& externe;
+};
+
+//==============================================================================
 /** La chaîne de périphériques de la piste choisie : instrument, puis effets, de gauche à droite.
     On peut y glisser un effet ou un instrument depuis le navigateur, à l'endroit précis voulu,
     et déplacer un effet en glissant sa barre de titre. */
@@ -1245,14 +1293,14 @@ public:
     bool isInterestedInDragSource (const SourceDetails& d) override
     {
         const auto id = d.description.toString();
-        return id.startsWith ("fx:") || id.startsWith ("inst:") || id.startsWith ("preset:") || id == "peripherique";
+        return IdNav::estConnu (id) || id == "peripherique";
     }
 
     void itemDragMove (const SourceDetails& d) override
     {
         const auto id = d.description.toString();
 
-        if (id.startsWith ("fx:") || id == "peripherique")
+        if (IdNav::estEffet (id) || id == "peripherique")
         {
             const int position = positionPour (d.localPosition.x);
             marqueur.setBounds (xDePosition (position) - 3, 4, 4, Peripherique::hauteurTotale);
@@ -1280,7 +1328,7 @@ public:
             if (auto* source = dynamic_cast<Peripherique*> (d.sourceComponent.get()))
                 Effets::deplacer (*piste, source->getPlugin(), position);
         }
-        else if (id.startsWith ("fx:"))
+        else if (IdNav::estEffet (id))
         {
             Effets::ajouter (*piste, id, position);
         }
@@ -1295,7 +1343,7 @@ public:
     {
         piste.edit.getUndoManager().beginNewTransaction();
 
-        if (id.startsWith ("fx:"))
+        if (IdNav::estEffet (id))
             Effets::ajouter (piste, id);
         else if (! TypePiste::estAudio (piste))
             Instruments::appliquer (piste, id);
@@ -1411,6 +1459,7 @@ private:
                 else if (auto* reverb = dynamic_cast<te::ReverbPlugin*> (plugin))       p = new PeripheriqueReverb (*reverb, couleur);
                 else if (auto* disto = dynamic_cast<DistorsionQuack*> (plugin))         p = new PeripheriqueDistorsion (*disto, couleur);
                 else if (auto* volume = dynamic_cast<VolumeQuack*> (plugin))            p = new PeripheriqueVolume (*volume, couleur);
+                else if (auto* externe = dynamic_cast<te::ExternalPlugin*> (plugin))    p = new PeripheriqueExterne (*externe, couleur);
 
                 if (p == nullptr)
                     continue;

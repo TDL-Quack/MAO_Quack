@@ -78,6 +78,7 @@ public:
           fichier (fichierDuMorceau),
           selection (*edit),
           transport (*edit),
+          navigateur (e),
           arrangement (*edit, selection),
           bas (*edit, selection)
     {
@@ -87,6 +88,8 @@ public:
         addAndMakeVisible (arrangement);
         addAndMakeVisible (aide);
         addAndMakeVisible (bas);
+
+        transport.surAutomation = [this] (bool active) { arrangement.definirModeAutomation (active); };
 
         navigateur.surChoix = [this] (const juce::String& id)
         {
@@ -181,6 +184,12 @@ public:
             return true;
         }
 
+        if (! k.getModifiers().isCommandDown() && (k.getKeyCode() == 'A' || k.getKeyCode() == 'a'))
+        {
+            basculerAutomation();
+            return true;
+        }
+
         if (k == juce::KeyPress::deleteKey || k == juce::KeyPress::backspaceKey)
         {
             // (Le piano roll traite lui-même ses notes quand on travaille dedans.)
@@ -249,8 +258,8 @@ public:
     {
         cmdNouveau = 1, cmdOuvrir, cmdEnregistrer, cmdEnregistrerSous, cmdExporter, cmdQuitter,
         cmdAnnuler = 20, cmdRetablir, cmdDupliquerClip, cmdSupprimerClip, cmdCopierClip, cmdCollerClip, cmdBouclerClip,
-        cmdVoirNotes = 30, cmdVoirInstrument,
-        cmdReglagesAudio = 40,
+        cmdVoirNotes = 30, cmdVoirInstrument, cmdAutomation,
+        cmdReglagesAudio = 40, cmdPlugins,
         cmdRaccourcis = 50, cmdJournal, cmdAPropos
     };
 
@@ -300,10 +309,14 @@ public:
             case 2:
                 ajouter (cmdVoirNotes, fr ("Notes du clip"), "Tab");
                 ajouter (cmdVoirInstrument, fr ("Instrument et effets de la piste"), "Tab");
+                m.addSeparator();
+                ajouter (cmdAutomation, arrangement.estEnModeAutomation() ? fr ("Quitter le mode automation")
+                                                                          : fr ("Mode automation (courbes de réglages)"), "A");
                 break;
 
             case 3:
                 ajouter (cmdReglagesAudio, fr ("Préférences audio (sortie du son, micro)..."));
+                ajouter (cmdPlugins, fr ("Plugins VST (recherche et liste)..."));
                 break;
 
             case 4:
@@ -338,6 +351,8 @@ public:
             case cmdBouclerClip:        arrangement.bouclerSurClip();               break;
             case cmdVoirNotes:          bas.montrer (0);                            break;
             case cmdVoirInstrument:     bas.montrer (1);                            break;
+            case cmdAutomation:         basculerAutomation();                       break;
+            case cmdPlugins:            ouvrirPlugins();                            break;
             case cmdReglagesAudio:      ouvrirReglagesAudio();                      break;
             case cmdRaccourcis:         montrerRaccourcis();                        break;
             case cmdJournal:            Journal::ecrire ("Journal ouvert depuis le menu Aide");
@@ -348,6 +363,58 @@ public:
     }
 
 private:
+    void basculerAutomation()
+    {
+        const bool actif = ! arrangement.estEnModeAutomation();
+        arrangement.definirModeAutomation (actif);
+        transport.definirAutomation (actif);
+    }
+
+    /** La fenêtre de gestion des plugins VST : recherche sur le disque et liste de ce qui a été trouvé. */
+    void ouvrirPlugins()
+    {
+        auto& gestionnaire = engine.getPluginManager();
+
+        // Un cadre qui possède l'explication et la liste des plugins
+        struct Cadre : public juce::Component
+        {
+            juce::Label explication;
+            std::unique_ptr<juce::PluginListComponent> liste;
+
+            void resized() override
+            {
+                explication.setBounds (10, 8, getWidth() - 20, 64);
+
+                if (liste != nullptr)
+                    liste->setBounds (0, 76, getWidth(), getHeight() - 76);
+            }
+        };
+
+        auto* cadre = new Cadre();
+        cadre->explication.setText (fr ("Pour chercher tes plugins : bouton « Options... » en bas, puis « Scan for new or updated VST3 "
+                                        "plug-ins ». Choisis le dossier (le plus souvent C:\\Program Files\\Common Files\\VST3) et valide.\n"
+                                        "Les plugins trouvés apparaissent ensuite dans le navigateur, dossier « Plugins VST »."),
+                                    juce::dontSendNotification);
+        cadre->explication.setFont (juce::FontOptions (13.5f));
+        cadre->explication.setColour (juce::Label::textColourId, Couleurs::texte);
+        cadre->explication.setJustificationType (juce::Justification::topLeft);
+        cadre->liste = std::make_unique<juce::PluginListComponent> (gestionnaire.pluginFormatManager, gestionnaire.knownPluginList,
+                                                                    engine.getTemporaryFileManager().getTempFile ("RecherchePlugins"),
+                                                                    nullptr);
+        cadre->addAndMakeVisible (cadre->explication);
+        cadre->addAndMakeVisible (*cadre->liste);
+        cadre->setSize (760, 520);
+
+        juce::DialogWindow::LaunchOptions o;
+        o.dialogTitle = "Plugins VST";
+        o.dialogBackgroundColour = Couleurs::panneau;
+        o.content.setOwned (cadre);
+        o.componentToCentreAround = this;
+        o.useNativeTitleBar = true;
+        o.resizable = false;
+        o.launchAsync();
+    }
+
     void montrerRaccourcis()
     {
         juce::AlertWindow::showAsync (
@@ -355,7 +422,7 @@ private:
                 .withIconType (juce::MessageBoxIconType::InfoIcon)
                 .withTitle ("Raccourcis clavier")
                 .withMessage (fr ("Espace : lecture / stop\n"
-                                  "Tab : passer des notes à l'instrument\n"
+                                  "Tab : passer des notes à l'instrument     A : mode automation\n"
                                   "Ctrl+Z / Ctrl+Y : annuler / rétablir\n"
                                   "Ctrl+S : enregistrer     Ctrl+E : exporter\n\n"
                                   "Dans l'arrangement :\n"
@@ -585,14 +652,19 @@ class ApplicationQuack : public juce::JUCEApplication
 public:
     const juce::String getApplicationName() override        { return "MAO Quack"; }
     const juce::String getApplicationVersion() override     { return MAOQUACK_VERSION; }
-    bool moreThanOneInstanceAllowed() override              { return false; }
+    bool moreThanOneInstanceAllowed() override              { return true; }     // la recherche de plugins relance le programme
 
-    void initialise (const juce::String&) override
+    void initialise (const juce::String& ligneDeCommande) override
     {
+        // Ce lancement n'est peut-être qu'un assistant chargé d'examiner un plugin VST :
+        // dans ce cas il fait son travail en silence, sans ouvrir de fenêtre.
+        if (te::PluginManager::startChildProcessPluginScan (ligneDeCommande))
+            return;
+
         juce::LookAndFeel::setDefaultLookAndFeel (&apparence);
         Journal::demarrer (MAOQUACK_VERSION);
         Instruments::preparerSonsBatterie();
-        engine = std::make_unique<te::Engine> (getApplicationName(), std::make_unique<ComportementQuack>(), nullptr);
+        engine = std::make_unique<te::Engine> (getApplicationName(), std::make_unique<ComportementQuack>(), std::make_unique<ReglagesMoteur>());
         Effets::declarerTypes (*engine);
         fenetre = std::make_unique<FenetrePrincipale> (*engine);
     }

@@ -155,6 +155,15 @@ namespace TypePiste
     inline void definirAudio (te::Track& piste, bool a) { piste.state.setProperty (id(), a ? "audio" : "midi", nullptr); }
 }
 
+/** Les identifiants des éléments du navigateur : « inst:... » et « preset:... » (instruments fournis),
+    « fx:... » (effets fournis), « vsti:... » et « vstfx:... » (plugins VST instruments et effets). */
+namespace IdNav
+{
+    inline bool estEffet (const juce::String& id)       { return id.startsWith ("fx:") || id.startsWith ("vstfx:"); }
+    inline bool estInstrument (const juce::String& id)  { return id.startsWith ("inst:") || id.startsWith ("preset:") || id.startsWith ("vsti:"); }
+    inline bool estConnu (const juce::String& id)       { return estEffet (id) || estInstrument (id); }
+}
+
 /** Fabrique la petite étiquette qui suit la souris pendant un glisser-déposer. */
 inline juce::ScaledImage imageGlisser (const juce::String& texte, juce::Colour couleur)
 {

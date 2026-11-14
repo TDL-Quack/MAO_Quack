@@ -69,7 +69,15 @@ public:
             if (auto* vp = piste.getVolumePlugin())
                 vp->setVolumeDb ((float) volume.getValue());
         };
-        for (auto* enfant : std::initializer_list<juce::Component*> { &muet, &solo, &volume, &menu })
+        addChildComponent (parametre);
+        parametre.setWantsKeyboardFocus (false);
+        parametre.setColour (juce::TextButton::buttonColourId, Couleurs::solo.darker (0.3f));
+        parametre.onClick = [this] { if (surParametre) surParametre (piste, parametre); };
+        definirAide (parametre, fr ("Réglage automatisé"),
+                     fr ("Choisis quel réglage tu dessines sur cette piste : son volume, son panoramique, ou n'importe quel "
+                         "potard de son instrument ou de ses effets."));
+
+        for (auto* enfant : std::initializer_list<juce::Component*> { &muet, &solo, &volume, &menu, &parametre })
             enfant->addMouseListener (this, false);
 
         definirAide (volume, fr ("Volume"),
@@ -122,10 +130,20 @@ public:
         solo.setBounds (ligne.removeFromLeft (28));
         ligne.removeFromLeft (8);
         volume.setBounds (ligne);
+        parametre.setBounds (ligne);
     }
 
     std::function<void (te::AudioTrack&, juce::Component&)> surMenu;
     std::function<void (te::AudioTrack&)> surChoix;
+    std::function<void (te::AudioTrack&, juce::Component&)> surParametre;
+
+    /** En mode automation, le volume laisse place au bouton qui choisit le réglage à automatiser. */
+    void definirAutomation (bool active, const juce::String& nomDuReglage)
+    {
+        volume.setVisible (! active);
+        parametre.setVisible (active);
+        parametre.setButtonText (nomDuReglage);
+    }
 
     te::AudioTrack& getPiste()      { return piste; }
 
@@ -147,6 +165,7 @@ private:
     juce::TextButton muet, solo, menu;
     bool choisie = false;
     juce::Slider volume;
+    juce::TextButton parametre;
 };
 
 //==============================================================================
@@ -248,7 +267,15 @@ public:
                 if (! plein.intersects (zone))
                     continue;
 
-                dessinerClip (g, *clip, plein, couleurPiste (*piste, numPiste), clip == choisi);
+                dessinerClip (g, *clip, plein, couleurPiste (*piste, numPiste), clip == choisi && ! modeAutomation);
+            }
+
+            if (modeAutomation)
+            {
+                // Les clips passent à l'arrière-plan, la courbe d'automation au premier plan
+                g.setColour (Couleurs::fond.withAlpha (0.55f));
+                g.fillRect (zone.getX(), yPiste (numPiste) + 1, zone.getWidth(), hauteurPiste - 1);
+                dessinerAutomation (g, *piste, numPiste);
             }
         }
 
@@ -284,6 +311,11 @@ public:
             const int x1 = tempsVersX (debutBoucle), x2 = tempsVersX (finBoucle);
             g.setColour (boucleActive ? Couleurs::accent : Couleurs::texteDoux.withAlpha (0.6f));
             g.fillRoundedRectangle ((float) x1, (float) regle.getY() + 2.0f, (float) juce::jmax (4, x2 - x1), (float) bandeBoucle - 4.0f, 3.0f);
+
+            // Les deux curseurs, début et fin, qu'on attrape séparément
+            g.setColour (juce::Colours::white);
+            g.fillRect (x1, regle.getY() + 1, 3, bandeBoucle - 2);
+            g.fillRect (x2 - 3, regle.getY() + 1, 3, bandeBoucle - 2);
         }
 
         int pasMesures = 1;     // écart entre les numéros pour qu'ils restent lisibles
@@ -344,7 +376,8 @@ public:
         g.fillRect (coin);
         g.setColour (Couleurs::texteDoux);
         g.setFont (juce::FontOptions (12.0f));
-        g.drawText (fr ("Pistes"), coin.reduced (8, 0), juce::Justification::centredLeft, false);
+        g.drawText (modeAutomation ? fr ("Pistes  -  mode automation") : fr ("Pistes"),
+                    coin.reduced (8, 0), juce::Justification::centredLeft, false);
     }
 
     void resized() override
@@ -365,8 +398,18 @@ public:
         // Tout en haut de la règle : la boucle
         if (e.y < bandeBoucle)
         {
-            mode = Mode::boucle;
+            const auto plage = boucleEnTemps();
+            const int x1 = tempsVersX (plage.getStart().inBeats()), x2 = tempsVersX (plage.getEnd().inBeats());
+            const bool existe = x2 > x1;
+
+            // Près d'un curseur : on ne bouge que lui. Au milieu : toute la boucle. Ailleurs : une nouvelle boucle.
+            if (existe && std::abs (e.x - x1) <= 6)             mode = Mode::boucleDebut;
+            else if (existe && std::abs (e.x - x2) <= 6)        mode = Mode::boucleFin;
+            else if (existe && e.x > x1 && e.x < x2)            mode = Mode::boucleEntiere;
+            else                                                mode = Mode::boucle;
+
             departBoucle = juce::jmax (0.0, std::round (xVersTemps (e.x)));
+            decalagePrise = xVersTemps (e.x) - plage.getStart().inBeats();
             return;
         }
 
@@ -400,6 +443,15 @@ public:
         if (numPiste >= 0 && numPiste < pistes.size())
             selection.choisirPiste (pistes[numPiste]);
 
+        if (modeAutomation)
+        {
+            if (numPiste >= 0 && numPiste < pistes.size())
+                cliquerAutomation (e, *pistes[numPiste], numPiste);
+
+            repaint();
+            return;
+        }
+
         if (auto* clip = clipSous (e.getPosition()))
         {
             selection.choisir (clip);
@@ -432,6 +484,31 @@ public:
             const double debut = juce::jmin (departBoucle, t);
             const double fin = juce::jmax (juce::jmax (departBoucle, t), debut + 1.0);
             definirBoucle (debut, fin, true);
+            return;
+        }
+
+        if (mode == Mode::boucleDebut || mode == Mode::boucleFin || mode == Mode::boucleEntiere)
+        {
+            const auto plage = boucleEnTemps();
+            const double debut = plage.getStart().inBeats(), fin = plage.getEnd().inBeats();
+            const double t = juce::jmax (0.0, std::round (xVersTemps (e.x)));
+
+            if (mode == Mode::boucleDebut)
+                definirBoucle (juce::jmin (t, fin - 1.0), fin, false);
+            else if (mode == Mode::boucleFin)
+                definirBoucle (debut, juce::jmax (t, debut + 1.0), false);
+            else
+            {
+                const double nouveauDebut = juce::jmax (0.0, std::round (xVersTemps (e.x) - decalagePrise));
+                definirBoucle (nouveauDebut, nouveauDebut + (fin - debut), false);
+            }
+
+            return;
+        }
+
+        if (mode == Mode::automation)
+        {
+            glisserPointAutomation (e);
             return;
         }
 
@@ -493,15 +570,30 @@ public:
 
     void mouseUp (const juce::MouseEvent&) override
     {
+        // Un clip posé sur un autre l'écrase, comme dans Ableton
+        if (mode == Mode::deplacer || mode == Mode::redimensionner)
+            if (auto* clip = selection.clipValide())
+                ecraserSous (*clip);
+
         mode = Mode::rien;
         repereGlisse = -1;
+        pointGlisse = -1;
+        parametreGlisse = nullptr;
+        repaint();
     }
 
     void mouseMove (const juce::MouseEvent& e) override
     {
         bool bord = false;
 
-        if (auto* clip = clipSous (e.getPosition()))
+        if (e.y < bandeBoucle)
+        {
+            // Sur un des deux curseurs de la boucle
+            const auto plage = boucleEnTemps();
+            const int x1 = tempsVersX (plage.getStart().inBeats()), x2 = tempsVersX (plage.getEnd().inBeats());
+            bord = x2 > x1 && (std::abs (e.x - x1) <= 6 || std::abs (e.x - x2) <= 6);
+        }
+        else if (auto* clip = modeAutomation ? nullptr : clipSous (e.getPosition()))
         {
             const auto r = rectangleClip (*clip, Selection::indexPiste (edit, *clip));
             bord = e.x > r.getRight() - 8 && r.getWidth() > 16;
@@ -539,6 +631,15 @@ public:
 
         auto pistes = te::getAudioTracks (edit);
         const int numPiste = pisteEnY (e.y);
+
+        if (modeAutomation)
+        {
+            // Double-clic sur un point d'automation : on l'efface
+            if (numPiste >= 0 && numPiste < pistes.size())
+                effacerPointAutomation (e, *pistes[numPiste], numPiste);
+
+            return;
+        }
 
         if (numPiste < 0 || numPiste >= pistes.size() || clipSous (e.getPosition()) != nullptr)
             return;
@@ -580,7 +681,7 @@ public:
     bool isInterestedInDragSource (const SourceDetails& d) override
     {
         const auto id = d.description.toString();
-        return id.startsWith ("fx:") || id.startsWith ("inst:") || id.startsWith ("preset:");
+        return IdNav::estConnu (id);
     }
 
     void itemDragMove (const SourceDetails& d) override     { survoler (pisteEnY (d.localPosition.y)); }
@@ -595,7 +696,7 @@ public:
 
         if (cible >= 0 && cible < pistes.size())
             appliquerSurPiste (*pistes[cible], id);
-        else if (! id.startsWith ("fx:"))
+        else if (IdNav::estInstrument (id))
             ajouterPiste (false, id);       // lâché sous les pistes : une nouvelle piste MIDI avec cet instrument
     }
 
@@ -650,7 +751,7 @@ public:
         edit.getUndoManager().beginNewTransaction();
         selection.choisirPiste (&piste);
 
-        if (id.startsWith ("fx:"))
+        if (IdNav::estEffet (id))
         {
             Effets::ajouter (piste, id);
         }
@@ -703,7 +804,10 @@ public:
         auto clip = piste.insertWaveClip (fichier.getFileNameWithoutExtension(), fichier, position, false);
 
         if (clip != nullptr)
+        {
             selection.choisir (clip.get());
+            ecraserSous (*clip);
+        }
 
         repaint();
         return clip;
@@ -766,6 +870,7 @@ public:
                     copie->moveTo (*piste);
 
             selection.choisir (copie.get());
+            ecraserSous (*copie);
         }
 
         repaint();
@@ -785,6 +890,7 @@ public:
         {
             copie->setStart (fin, false, true);
             selection.choisir (copie.get());
+            ecraserSous (*copie);
         }
 
         repaint();
@@ -819,8 +925,20 @@ public:
         }
     }
 
+    //==========================================================================
+    // Mode automation
+
+    bool estEnModeAutomation() const        { return modeAutomation; }
+
+    void definirModeAutomation (bool actif)
+    {
+        modeAutomation = actif;
+        mettreAJourEnTetesAutomation();
+        repaint();
+    }
+
 private:
-    enum class Mode { rien, lecture, boucle, repere, deplacer, redimensionner };
+    enum class Mode { rien, lecture, boucle, boucleDebut, boucleFin, boucleEntiere, repere, deplacer, redimensionner, automation };
 
     te::Edit& edit;
     Selection& selection;
@@ -843,6 +961,346 @@ private:
     te::Clip::Ptr clipCopie;
 
     static constexpr int maxPistes = 16;
+
+    bool modeAutomation = false;
+    std::map<juce::uint64, te::AutomatableParameter::Ptr> reglagesAutomatises;     // par piste : le réglage affiché
+    te::AutomatableParameter::Ptr parametreGlisse;
+    int pointGlisse = -1;
+
+    //==========================================================================
+    // Écrasement des clips
+
+    /** Retire ce qui se trouve sous un clip sur sa piste : les autres clips sont coupés ou effacés. */
+    void ecraserSous (te::Clip& dessus)
+    {
+        auto* piste = dessus.getClipTrack();
+        if (piste == nullptr)
+            return;
+
+        const auto zone = dessus.getPosition().time;
+        juce::Array<te::Clip::Ptr> autres;
+
+        for (auto* c : piste->getClips())
+            if (c != &dessus)
+                autres.add (c);
+
+        for (auto& c : autres)
+        {
+            const auto t = c->getPosition().time;
+
+            if (t.getEnd() <= zone.getStart() || t.getStart() >= zone.getEnd())
+                continue;       // ne se touchent pas
+
+            const bool debutCouvert = t.getStart() >= zone.getStart();
+            const bool finCouverte = t.getEnd() <= zone.getEnd();
+
+            if (debutCouvert && finCouverte)
+            {
+                c->removeFromParent();                  // entièrement recouvert
+            }
+            else if (debutCouvert)
+            {
+                rognerDebut (*c, zone.getEnd());        // son début est recouvert
+            }
+            else if (finCouverte)
+            {
+                c->setEnd (zone.getStart(), false);     // sa fin est recouverte
+            }
+            else
+            {
+                // Recouvert au milieu : il est coupé en deux morceaux
+                if (auto droite = te::duplicateClip (*c))
+                    rognerDebut (*droite, zone.getEnd());
+
+                c->setEnd (zone.getStart(), false);
+            }
+        }
+    }
+
+    /** Fait commencer un clip plus tard, sans déplacer ce qu'il contient. */
+    void rognerDebut (te::Clip& c, te::TimePosition nouveauDebut)
+    {
+        if (auto* mc = dynamic_cast<te::MidiClip*> (&c))
+        {
+            auto* um = &edit.getUndoManager();
+            const double delta = edit.tempoSequence.toBeats (nouveauDebut).inBeats() - tempsDuClip (c).getStart().inBeats();
+            auto& sequence = mc->getSequence();
+            const juce::Array<te::MidiNote*> notes (sequence.getNotes());
+
+            // Les notes sont comptées depuis le début du clip : on les recale
+            for (auto* n : notes)
+            {
+                const double debut = n->getStartBeat().inBeats(), fin = n->getEndBeat().inBeats();
+
+                if (fin <= delta)
+                    sequence.removeNote (*n, um);
+                else if (debut < delta)
+                    n->setStartAndLength (te::BeatPosition::fromBeats (0.0), te::BeatDuration::fromBeats (fin - delta), um);
+                else
+                    n->setStartAndLength (te::BeatPosition::fromBeats (debut - delta), n->getLengthBeats(), um);
+            }
+
+            c.setStart (nouveauDebut, false, false);
+        }
+        else
+        {
+            c.setStart (nouveauDebut, true, false);     // un son : on saute simplement le début du fichier
+        }
+    }
+
+    //==========================================================================
+    // Automation : une courbe par piste, pour le réglage choisi dans l'en-tête
+
+    te::AutomatableParameter::Ptr reglageDe (te::AudioTrack& piste)
+    {
+        auto& choisi = reglagesAutomatises[piste.itemID.getRawID()];
+
+        // Le réglage choisi a pu disparaître avec son effet
+        if (choisi != nullptr)
+        {
+            bool existe = false;
+
+            for (auto* p : piste.pluginList.getPlugins())
+                existe = existe || p->getAutomatableParameters().contains (choisi.get());
+
+            if (! existe)
+                choisi = nullptr;
+        }
+
+        if (choisi == nullptr)
+            if (auto* volume = piste.getVolumePlugin())
+                choisi = volume->volParam;
+
+        return choisi;
+    }
+
+    juce::String nomDuReglage (te::AudioTrack& piste)
+    {
+        auto p = reglageDe (piste);
+        if (p == nullptr)
+            return "-";
+
+        if (auto* volume = piste.getVolumePlugin())
+        {
+            if (p == volume->volParam)   return "Volume";
+            if (p == volume->panParam)   return "Pan";
+        }
+
+        return p->getParameterName();
+    }
+
+    void mettreAJourEnTetesAutomation()
+    {
+        for (auto* e : enTetes)
+            e->definirAutomation (modeAutomation, modeAutomation ? nomDuReglage (e->getPiste()) : juce::String());
+    }
+
+    juce::Rectangle<int> zoneAutomation (int numPiste) const
+    {
+        return { zonePistes().getX(), yPiste (numPiste) + 7, zonePistes().getWidth(), hauteurPiste - 14 };
+    }
+
+    int yDeValeur (te::AutomatableParameter& p, float valeur, int numPiste) const
+    {
+        const auto z = zoneAutomation (numPiste);
+        return z.getBottom() - juce::roundToInt (p.valueRange.convertTo0to1 (p.valueRange.snapToLegalValue (valeur)) * (float) z.getHeight());
+    }
+
+    float valeurEnY (te::AutomatableParameter& p, int y, int numPiste) const
+    {
+        const auto z = zoneAutomation (numPiste);
+        return p.valueRange.convertFrom0to1 (juce::jlimit (0.0f, 1.0f, (float) (z.getBottom() - y) / (float) z.getHeight()));
+    }
+
+    int xDuPoint (te::AutomationCurve& courbe, int index) const
+    {
+        return tempsVersX (edit.tempoSequence.toBeats (courbe.getPointTime (index)).inBeats());
+    }
+
+    int pointSous (te::AutomatableParameter& p, juce::Point<int> pos, int numPiste) const
+    {
+        auto& courbe = p.getCurve();
+
+        for (int i = courbe.getNumPoints(); --i >= 0;)
+            if (juce::Point<int> (xDuPoint (courbe, i), yDeValeur (p, courbe.getPointValue (i), numPiste)).getDistanceFrom (pos) <= 8)
+                return i;
+
+        return -1;
+    }
+
+    void dessinerAutomation (juce::Graphics& g, te::AudioTrack& piste, int numPiste)
+    {
+        auto p = reglageDe (piste);
+        if (p == nullptr)
+            return;
+
+        auto& courbe = p->getCurve();
+        const auto zone = zonePistes();
+        const int n = courbe.getNumPoints();
+        const auto couleur = Couleurs::solo;
+
+        if (n == 0)
+        {
+            // Pas encore de courbe : un trait fin à la valeur actuelle du réglage
+            g.setColour (couleur.withAlpha (0.5f));
+            g.drawHorizontalLine (yDeValeur (*p, p->getCurrentValue(), numPiste), (float) zone.getX(), (float) zone.getRight());
+            return;
+        }
+
+        juce::Path trace;
+        trace.startNewSubPath ((float) zone.getX(), (float) yDeValeur (*p, courbe.getPointValue (0), numPiste));
+
+        for (int i = 0; i < n; ++i)
+            trace.lineTo ((float) xDuPoint (courbe, i), (float) yDeValeur (*p, courbe.getPointValue (i), numPiste));
+
+        trace.lineTo ((float) zone.getRight(), (float) yDeValeur (*p, courbe.getPointValue (n - 1), numPiste));
+
+        g.setColour (couleur);
+        g.strokePath (trace, juce::PathStrokeType (2.0f));
+
+        for (int i = 0; i < n; ++i)
+        {
+            const juce::Point<float> centre ((float) xDuPoint (courbe, i), (float) yDeValeur (*p, courbe.getPointValue (i), numPiste));
+            const bool glisse = (p == parametreGlisse && i == pointGlisse);
+
+            g.setColour (glisse ? juce::Colours::white : couleur.brighter (0.4f));
+            g.fillEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (centre));
+            g.setColour (juce::Colours::black);
+            g.drawEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (centre), 1.0f);
+
+            if (glisse)
+            {
+                // La valeur du point qu'on est en train de bouger
+                g.setColour (juce::Colours::white);
+                g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+                g.drawText (p->valueToString (courbe.getPointValue (i)) + " " + p->getLabel(),
+                            (int) centre.x + 8, (int) centre.y - 18, 120, 16, juce::Justification::centredLeft, false);
+            }
+        }
+    }
+
+    void cliquerAutomation (const juce::MouseEvent& e, te::AudioTrack& piste, int numPiste)
+    {
+        auto p = reglageDe (piste);
+        if (p == nullptr)
+            return;
+
+        auto& courbe = p->getCurve();
+        auto* um = &edit.getUndoManager();
+        um->beginNewTransaction();
+
+        int index = pointSous (*p, e.getPosition(), numPiste);
+
+        if (index >= 0 && e.mods.isPopupMenu())
+        {
+            courbe.removePoint (index, um);     // clic droit : effacer le point
+            return;
+        }
+
+        if (e.mods.isPopupMenu())
+            return;
+
+        if (index < 0)
+        {
+            // Un nouveau point, aimanté sur le quart de temps
+            const double temps = juce::jmax (0.0, std::round (xVersTemps (e.x) * 4.0) / 4.0);
+            index = courbe.addPoint (te::EditPosition (edit.tempoSequence.toTime (te::BeatPosition::fromBeats (temps))),
+                                     valeurEnY (*p, e.y, numPiste), 0.0f, um);
+        }
+
+        parametreGlisse = p;
+        pointGlisse = index;
+        pisteGlissee = numPiste;
+        mode = Mode::automation;
+    }
+
+    void glisserPointAutomation (const juce::MouseEvent& e)
+    {
+        if (parametreGlisse == nullptr)
+            return;
+
+        auto& courbe = parametreGlisse->getCurve();
+        if (pointGlisse < 0 || pointGlisse >= courbe.getNumPoints())
+            return;
+
+        const double temps = juce::jmax (0.0, std::round (xVersTemps (e.x) * 4.0) / 4.0);
+        pointGlisse = courbe.movePoint (pointGlisse,
+                                        te::EditPosition (edit.tempoSequence.toTime (te::BeatPosition::fromBeats (temps))),
+                                        valeurEnY (*parametreGlisse, e.y, pisteGlissee), std::nullopt, false,
+                                        &edit.getUndoManager());
+        repaint();
+    }
+
+    void effacerPointAutomation (const juce::MouseEvent& e, te::AudioTrack& piste, int numPiste)
+    {
+        if (auto p = reglageDe (piste))
+        {
+            const int index = pointSous (*p, e.getPosition(), numPiste);
+
+            if (index >= 0)
+            {
+                edit.getUndoManager().beginNewTransaction();
+                p->getCurve().removePoint (index, &edit.getUndoManager());
+                repaint();
+            }
+        }
+    }
+
+    /** Le menu qui choisit le réglage automatisé d'une piste. */
+    void menuReglage (te::AudioTrack& piste, juce::Component& cible)
+    {
+        auto liste = std::make_shared<juce::Array<te::AutomatableParameter::Ptr>>();
+        const auto actuel = reglageDe (piste);
+        juce::PopupMenu m;
+
+        auto ajouterReglage = [&] (juce::PopupMenu& menu, te::AutomatableParameter::Ptr p, const juce::String& nom)
+        {
+            liste->add (p);
+            // Une puce signale les réglages qui ont déjà une courbe
+            menu.addItem (liste->size(), (p->getCurve().getNumPoints() > 0 ? juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x8f ")) : juce::String()) + nom,
+                          true, p == actuel);
+        };
+
+        if (auto* volume = piste.getVolumePlugin())
+        {
+            m.addSectionHeader ("Piste");
+            ajouterReglage (m, volume->volParam, "Volume");
+            ajouterReglage (m, volume->panParam, "Pan");
+        }
+
+        for (auto* plugin : Effets::chaineDe (piste))
+        {
+            juce::PopupMenu sous;
+            int n = 0;
+
+            for (auto p : plugin->getAutomatableParameters())
+            {
+                if (++n > 80)
+                    break;
+
+                ajouterReglage (sous, p, p->getParameterName());
+            }
+
+            if (n > 0)
+                m.addSubMenu (plugin->getName(), sous);
+        }
+
+        te::AudioTrack::Ptr garde (&piste);
+        juce::Component::SafePointer<VueArrangement> moi (this);
+
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&cible),
+                         [moi, garde, liste] (int choix)
+                         {
+                             if (moi != nullptr && choix > 0 && choix <= liste->size())
+                             {
+                                 moi->reglagesAutomatises[garde->itemID.getRawID()] = (*liste)[choix - 1];
+                                 moi->mettreAJourEnTetesAutomation();
+                                 moi->repaint();
+                             }
+                         });
+    }
+
+    int pisteGlissee = 0;
 
     //==========================================================================
     // Géométrie
@@ -1095,10 +1553,12 @@ private:
             auto* e = enTetes.add (new EnTetePiste (*t, i++));
             e->surMenu = [this] (te::AudioTrack& piste, juce::Component& cible) { menuPiste (piste, cible); };
             e->surChoix = [this] (te::AudioTrack& piste) { selection.choisirPiste (&piste); };
+            e->surParametre = [this] (te::AudioTrack& piste, juce::Component& cible) { menuReglage (piste, cible); };
             conteneur.addAndMakeVisible (e);
         }
 
         ajouter.setEnabled (enTetes.size() < maxPistes);
+        mettreAJourEnTetesAutomation();
         placerEnTetes();
     }
 

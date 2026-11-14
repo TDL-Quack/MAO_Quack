@@ -109,6 +109,17 @@ public:
                      fr ("Fait tourner en boucle la zone marquée par la barre orange, tout en haut de la règle. Pour choisir "
                          "cette zone : glisse la souris tout en haut de la règle, ou choisis un clip et fais Ctrl+L."));
 
+        addAndMakeVisible (automation);
+        automation.setButtonText ("Automation");
+        automation.setClickingTogglesState (true);
+        automation.setWantsKeyboardFocus (false);
+        automation.setColour (juce::TextButton::buttonOnColourId, Couleurs::solo);
+        automation.onClick = [this] { if (surAutomation) surAutomation (automation.getToggleState()); };
+        definirAide (automation, "Automation",
+                     fr ("Le mode automation : sur chaque piste, tu dessines une courbe qui fait bouger un réglage tout seul "
+                         "pendant le morceau (un volume qui monte, un filtre qui s'ouvre...). Clic : poser un point. "
+                         "Glisser : le déplacer. Double-clic ou clic droit : l'effacer. Raccourci : A."));
+
         addAndMakeVisible (position);
         position.setJustificationType (juce::Justification::centred);
         position.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 17.0f, juce::Font::bold));
@@ -157,7 +168,7 @@ public:
         auto r = getLocalBounds().reduced (8, 5);
 
         // Bloc central
-        const int largeurBloc = 110 + 8 + 34 + 24 + 40 + 6 + 40 + 16 + 110 + 12 + 70;
+        const int largeurBloc = 110 + 8 + 34 + 24 + 40 + 6 + 40 + 16 + 110 + 12 + 70 + 8 + 96;
         auto c = r.withSizeKeepingCentre (juce::jmin (largeurBloc, r.getWidth()), r.getHeight());
 
         tempo.setBounds (c.removeFromLeft (110));
@@ -171,13 +182,19 @@ public:
         position.setBounds (c.removeFromLeft (110));
         c.removeFromLeft (12);
         boucle.setBounds (c.removeFromLeft (70));
+        c.removeFromLeft (8);
+        automation.setBounds (c.removeFromLeft (96));
     }
+
+    std::function<void (bool)> surAutomation;
+
+    void definirAutomation (bool active)    { automation.setToggleState (active, juce::dontSendNotification); }
 
 private:
     te::Edit& edit;
 
     juce::Label position;
-    juce::TextButton boucle;
+    juce::TextButton boucle, automation;
     juce::Slider tempo;
     BoutonForme metronome { "metronome", BoutonForme::Forme::metronome, Couleurs::accent };
     BoutonForme lecture   { "lecture",   BoutonForme::Forme::lecture,   Couleurs::lecture };

@@ -2,6 +2,7 @@
 
 #include "Commun.h"
 #include "Instruments.h"
+#include "Vst.h"
 
 #if QUACK_AVEC_MP3
  #include <lame/lame.h>
@@ -23,6 +24,27 @@ public:
             juce::MessageManager::getInstance()->runDispatchLoopUntil (15);
 
         Journal::ecrire ("Tache longue : fin");
+    }
+
+    /** Le moteur nous demande d'ouvrir la fenêtre d'un plugin (VST). */
+    std::unique_ptr<juce::Component> createPluginWindow (te::PluginWindowState& etat) override
+    {
+        auto* etatPlugin = dynamic_cast<te::Plugin::WindowState*> (&etat);
+        if (etatPlugin == nullptr)
+            return {};
+
+        if (auto* externe = dynamic_cast<te::ExternalPlugin*> (&etatPlugin->plugin))
+            if (externe->getAudioPluginInstance() == nullptr)
+                return {};      // plugin introuvable sur cet ordinateur
+
+        auto fenetre = std::make_unique<FenetrePlugin> (etatPlugin->plugin);
+
+        if (! fenetre->aUnEditeur())
+            return {};
+
+        fenetre->setVisible (true);
+        fenetre->toFront (false);
+        return fenetre;
     }
 
     void showWarningMessage (const juce::String& message) override
@@ -78,6 +100,15 @@ private:
 
         te::ThreadPoolJobWithProgress& tache;
     };
+};
+
+/** Réglages généraux du moteur audio. */
+class ReglagesMoteur : public te::EngineBehaviour
+{
+public:
+    // La recherche des plugins VST se fait dans un programme à part : si un plugin plante
+    // pendant qu'on l'examine, MAO Quack continue de tourner.
+    bool canScanPluginsOutOfProcess() override      { return true; }
 };
 
 /** Export du morceau : WAV, MP3 ou MIDI, en un seul fichier ou une piste par fichier. */

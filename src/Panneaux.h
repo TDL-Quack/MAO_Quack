@@ -16,10 +16,10 @@ class Navigateur : public juce::Component,
                    private juce::Timer
 {
 public:
-    Navigateur()
+    Navigateur (te::Engine& e) : engine (e)
     {
         favoris = Reglages::lireFavoris();
-        ouverts = { "Favoris", "Instruments", "Quack Synth", "Quack Drums", "Effets" };
+        ouverts = { "Favoris", "Instruments", "Quack Synth", "Quack Drums", "Effets", "Plugins VST", Vst::sansCategorie() };
         recharger();
         definirAideParDefaut();
         startTimer (1500);
@@ -79,6 +79,13 @@ public:
                 g.setFont (juce::FontOptions (l.profondeur == 0 ? 14.5f : 14.0f, juce::Font::bold));
                 g.drawText (l.nom, r.withTrimmedLeft (2), juce::Justification::centredLeft, true);
             }
+            else if (l.id.isEmpty())
+            {
+                // Une simple ligne d'information
+                g.setColour (Couleurs::texteDoux);
+                g.setFont (juce::FontOptions (12.5f));
+                g.drawText (l.nom, r.withTrimmedLeft (4), juce::Justification::centredLeft, true);
+            }
             else
             {
                 auto zoneEtoile = r.removeFromRight (28).withSizeKeepingCentre (15, 15).toFloat();
@@ -122,7 +129,7 @@ public:
                 definirAide (*this, lignes[i].nom,
                              lignes[i].description + fr (" Clique pour ouvrir ou fermer le dossier. Tu peux aussi le glisser sur "
                                                          "une piste (ou double-cliquer) pour poser l'instrument avec son son de base."));
-            else if (i >= 0 && i < lignes.size() && ! lignes[i].dossier)
+            else if (i >= 0 && i < lignes.size() && ! lignes[i].dossier && lignes[i].id.isNotEmpty())
                 definirAide (*this, lignes[i].nom,
                              lignes[i].description + fr (" Double-clic : le mettre sur la piste choisie. Tu peux aussi le glisser "
                                                          "sur une piste ou dans la chaîne d'effets. L'étoile l'ajoute aux favoris."));
@@ -162,7 +169,7 @@ public:
             return;
         }
 
-        if (e.x > getWidth() - 30)
+        if (e.x > getWidth() - 30 && ligne.id.isNotEmpty())
         {
             // L'étoile
             if (favoris.contains (ligne.id))   favoris.removeString (ligne.id);
@@ -170,6 +177,15 @@ public:
 
             Reglages::ecrireFavoris (favoris);
             repaint();
+            return;
+        }
+
+        if (ligne.id.isEmpty())
+            return;
+
+        if (e.mods.isPopupMenu() && Vst::estIdVst (ligne.id))
+        {
+            menuRangement (ligne);
             return;
         }
 
@@ -239,7 +255,9 @@ private:
 
     static constexpr int hauteurLigne = 26;
 
-    juce::Array<Ligne> elements;        // tous les instruments et effets (sans les dossiers)
+    te::Engine& engine;
+    juce::Array<Ligne> elements;        // tous les instruments et effets fournis (sans les dossiers)
+    juce::Array<Ligne> plugins;         // les plugins VST
     juce::StringArray favoris, ouverts;
     int survol = -1;
     int defilement = 0;
@@ -281,6 +299,82 @@ private:
             l.effet = true;
             elements.add (l);
         }
+
+        // Les plugins VST trouvés sur l'ordinateur
+        plugins.clear();
+
+        for (auto& d : Vst::liste (engine))
+        {
+            Ligne l;
+            l.id = Vst::idDe (d);
+            l.nom = d.name;
+            l.description = (d.isInstrument ? fr ("Instrument VST de ") : fr ("Effet VST de ")) + d.manufacturerName
+                              + fr (". Clic droit : le ranger dans une catégorie.");
+            l.effet = ! d.isInstrument;
+            plugins.add (l);
+        }
+    }
+
+    /** Menu « Ranger dans... » d'un plugin VST. */
+    void menuRangement (const Ligne& ligne)
+    {
+        const auto existantes = Vst::categoriesUtilisees();
+        const auto actuelle = Vst::categorieDe (ligne.id);
+
+        juce::PopupMenu m;
+        m.addSectionHeader (fr ("Ranger « ") + ligne.nom + fr (" » dans :"));
+
+        int id = 1;
+        for (auto& c : existantes)
+            m.addItem (id++, c, true, c == actuelle);
+
+        m.addItem (500, Vst::sansCategorie(), true, actuelle == Vst::sansCategorie());
+        m.addSeparator();
+        m.addItem (501, fr ("Nouvelle catégorie..."));
+
+        juce::Component::SafePointer<Navigateur> moi (this);
+        const auto idPlugin = ligne.id;
+
+        m.showMenuAsync (juce::PopupMenu::Options(), [moi, idPlugin, existantes] (int choix)
+        {
+            if (moi == nullptr || choix <= 0)
+                return;
+
+            if (choix == 501)
+            {
+                moi->demanderNouvelleCategorie (idPlugin);
+                return;
+            }
+
+            const auto categorie = choix == 500 ? Vst::sansCategorie() : existantes[choix - 1];
+            Vst::definirCategorie (idPlugin, categorie);
+            moi->ouverts.addIfNotAlreadyThere (categorie);
+            moi->repaint();
+        });
+    }
+
+    void demanderNouvelleCategorie (const juce::String& idPlugin)
+    {
+        auto* fenetre = new juce::AlertWindow (fr ("Nouvelle catégorie"),
+                                               fr ("Par exemple : Synthés, Pianos, Réverbes, Distorsions..."),
+                                               juce::MessageBoxIconType::NoIcon, this);
+        fenetre->addTextEditor ("nom", "");
+        fenetre->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        fenetre->addButton ("Annuler", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+        juce::Component::SafePointer<Navigateur> moi (this);
+
+        fenetre->enterModalState (true, juce::ModalCallbackFunction::create ([moi, fenetre, idPlugin] (int resultat)
+        {
+            const auto nom = fenetre->getTextEditorContents ("nom").trim();
+
+            if (moi != nullptr && resultat == 1 && nom.isNotEmpty())
+            {
+                Vst::definirCategorie (idPlugin, nom);
+                moi->ouverts.addIfNotAlreadyThere (nom);
+                moi->repaint();
+            }
+        }), true);
     }
 
     /** Un dossier. S'il a un identifiant, on peut aussi le glisser comme un instrument (son de base). */
@@ -307,9 +401,15 @@ private:
 
         lignes.add (dossier (0, "Favoris", fr ("Tes instruments et effets préférés, marqués d'une étoile.")));
         if (ouverts.contains ("Favoris"))
+        {
             for (auto& e : elements)
                 if (favoris.contains (e.id))
                     ajouterElement (e, 1);
+
+            for (auto& e : plugins)
+                if (favoris.contains (e.id))
+                    ajouterElement (e, 1);
+        }
 
         lignes.add (dossier (0, "Instruments", fr ("Ce qui fabrique le son d'une piste.")));
         if (ouverts.contains ("Instruments"))
@@ -332,6 +432,40 @@ private:
             for (auto& e : elements)
                 if (e.effet)
                     ajouterElement (e, 1);
+
+        // Les plugins VST, rangés par catégorie ; un nouveau plugin arrive dans « Sans catégorie »
+        lignes.add (dossier (0, "Plugins VST", fr ("Les instruments et effets VST3 installés sur l'ordinateur. Pour les chercher : "
+                                                    "menu Options > Plugins VST.")));
+        if (ouverts.contains ("Plugins VST"))
+        {
+            if (plugins.isEmpty())
+            {
+                Ligne info;
+                info.profondeur = 1;
+                info.nom = fr ("Aucun : menu Options > Plugins VST");
+                lignes.add (info);
+            }
+
+            auto categories = Vst::categoriesUtilisees();
+            categories.add (Vst::sansCategorie());
+
+            for (auto& categorie : categories)
+            {
+                bool vide = true;
+                for (auto& e : plugins)
+                    vide = vide && Vst::categorieDe (e.id) != categorie;
+
+                if (vide)
+                    continue;
+
+                lignes.add (dossier (1, categorie, fr ("Une catégorie de plugins VST. Clic droit sur un plugin pour le changer de catégorie.")));
+
+                if (ouverts.contains (categorie))
+                    for (auto& e : plugins)
+                        if (Vst::categorieDe (e.id) == categorie)
+                            ajouterElement (e, 2);
+            }
+        }
 
         return lignes;
     }
@@ -374,10 +508,10 @@ private:
     void timerCallback() override
     {
         // Un préréglage a pu être enregistré depuis le synthé
-        const int avant = elements.size();
+        const int avant = elements.size() + plugins.size();
         recharger();
 
-        if (elements.size() != avant)
+        if (elements.size() + plugins.size() != avant)
             repaint();
     }
 };

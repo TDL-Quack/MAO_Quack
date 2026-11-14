@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Commun.h"
+#include "Vst.h"
 
 /** Les instruments fournis avec le logiciel : une batterie (sons fabriqués
     par le programme lui-même) et des synthés avec quelques réglages tout prêts. */
@@ -347,17 +348,29 @@ namespace Instruments
         return id;
     }
 
+    /** Vrai pour ce qui fabrique le son d'une piste : batterie, synthé, ou instrument VST. */
+    inline bool estUnInstrument (te::Plugin& p)
+    {
+        if (dynamic_cast<te::SamplerPlugin*> (&p) != nullptr || dynamic_cast<te::FourOscPlugin*> (&p) != nullptr)
+            return true;
+
+        if (auto* externe = dynamic_cast<te::ExternalPlugin*> (&p))
+            return externe->isSynth();
+
+        return false;
+    }
+
     inline void retirerInstruments (te::AudioTrack& piste)
     {
         for (auto* p : piste.pluginList.getPlugins())
-            if (dynamic_cast<te::SamplerPlugin*> (p) != nullptr || dynamic_cast<te::FourOscPlugin*> (p) != nullptr)
+            if (estUnInstrument (*p))
                 p->deleteFromParent();
     }
 
     inline te::Plugin* instrumentDe (te::AudioTrack& piste)
     {
         for (auto* p : piste.pluginList.getPlugins())
-            if (dynamic_cast<te::SamplerPlugin*> (p) != nullptr || dynamic_cast<te::FourOscPlugin*> (p) != nullptr)
+            if (estUnInstrument (*p))
                 return p;
         return nullptr;
     }
@@ -424,6 +437,9 @@ namespace Instruments
 
     inline juce::String nomDeLId (const juce::String& id)
     {
+        if (Vst::estIdVst (id))
+            return Vst::nomDepuisId (id);
+
         for (auto& e : catalogue())
             if (e.id == id)
                 return e.nom;
@@ -452,6 +468,19 @@ namespace Instruments
                 installer (piste, t);
                 return true;
             }
+        }
+
+        if (id.startsWith ("vsti:"))
+        {
+            // Un instrument VST
+            if (auto plugin = Vst::creer (piste.edit, id))
+            {
+                retirerInstruments (piste);
+                piste.pluginList.insertPlugin (plugin, 0, nullptr);
+                return true;
+            }
+
+            return false;
         }
 
         if (id.startsWith ("preset:"))
