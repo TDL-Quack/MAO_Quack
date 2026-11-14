@@ -3,6 +3,7 @@
 #include "Commun.h"
 #include "PianoRoll.h"
 #include "Peripheriques.h"
+#include "ClipAudio.h"
 
 //==============================================================================
 /** La zone du bas, avec deux onglets comme dans Ableton :
@@ -14,9 +15,10 @@ public:
     static constexpr int hauteurOnglets = 20;
 
     PanneauBas (te::Edit& e, Selection& sel)
-        : edit (e), selection (sel), pianoRoll (e, sel), chaine (e, sel)
+        : edit (e), selection (sel), pianoRoll (e, sel), clipAudio (e, sel), chaine (e, sel)
     {
         addAndMakeVisible (pianoRoll);
+        addChildComponent (clipAudio);
         addChildComponent (chaine);
 
         auto preparer = [this] (juce::TextButton& b, const juce::String& texte, int index, const juce::String& aide)
@@ -53,7 +55,11 @@ public:
     void montrer (int index)
     {
         onglet = index;
-        pianoRoll.setVisible (index == 0);
+
+        // L'onglet « Notes » montre les notes d'un clip MIDI, ou les réglages d'un clip audio
+        const bool audio = dynamic_cast<te::WaveAudioClip*> (selection.clipValide()) != nullptr;
+        pianoRoll.setVisible (index == 0 && ! audio);
+        clipAudio.setVisible (index == 0 && audio);
         chaine.setVisible (index == 1);
         ongletNotes.setToggleState (index == 0, juce::dontSendNotification);
         ongletInstrument.setToggleState (index == 1, juce::dontSendNotification);
@@ -87,6 +93,7 @@ public:
         ongletInstrument.setBounds (barre.removeFromRight (84));
         ongletNotes.setBounds (barre.removeFromRight (60));
         pianoRoll.setBounds (r);
+        clipAudio.setBounds (r);
         chaine.setBounds (r);
     }
 
@@ -94,6 +101,7 @@ private:
     te::Edit& edit;
     Selection& selection;
     PianoRoll pianoRoll;
+    PanneauClipAudio clipAudio;
     ChainePeripheriques chaine;
     juce::TextButton ongletNotes, ongletInstrument;
     int onglet = 0;
@@ -111,6 +119,8 @@ private:
             montrer (0);
         else if (piste != dernierePiste)
             montrer (1);
+        else
+            montrer (onglet);       // le type de clip a pu changer (notes ou son)
 
         dernierClip = clip;
         dernierePiste = piste;

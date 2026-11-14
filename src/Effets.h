@@ -2,6 +2,7 @@
 
 #include "Commun.h"
 #include "Vst.h"
+#include "Instruments.h"
 
 //==============================================================================
 /** Distorsion : pousse le son dans une courbe qui l'écrase (saturation). */
@@ -329,18 +330,10 @@ namespace Effets
         engine.getPluginManager().createBuiltInType<VolumeQuack>();
         engine.getPluginManager().createBuiltInType<OscilloQuack>();
         engine.getPluginManager().createBuiltInType<CompresseurQuack>();
+        engine.getPluginManager().createBuiltInType<SampleurQuack>();
     }
 
-    inline bool estInstrument (te::Plugin& p)
-    {
-        if (dynamic_cast<te::SamplerPlugin*> (&p) != nullptr || dynamic_cast<te::FourOscPlugin*> (&p) != nullptr)
-            return true;
-
-        if (auto* externe = dynamic_cast<te::ExternalPlugin*> (&p))
-            return externe->isSynth();
-
-        return false;
-    }
+    inline bool estInstrument (te::Plugin& p)       { return Instruments::estUnInstrument (p); }
 
     inline bool estEffetConnu (te::Plugin& p)
     {
@@ -395,6 +388,16 @@ namespace Effets
         }
 
         return nullptr;
+    }
+
+    /** Place un oscilloscope derrière chaque synthé du morceau qui n'en a pas encore.
+        À faire juste après l'ouverture d'un morceau, pour que le simple fait de regarder
+        un synthé ne compte pas comme une modification. */
+    inline void preparerOscillos (te::Edit& edit)
+    {
+        for (auto* piste : te::getAudioTracks (edit))
+            if (piste->pluginList.findFirstPluginOfType<te::FourOscPlugin>() != nullptr)
+                oscilloDe (*piste, true);
     }
 
     /** La place, dans la liste complète des plugins de la piste, qui correspond à la position

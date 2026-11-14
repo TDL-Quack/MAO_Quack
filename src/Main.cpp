@@ -10,51 +10,28 @@
 #include "Effets.h"
 #include "PanneauBas.h"
 #include "Export.h"
+#include "BinaryData.h"
 
 static const char* const extensionMorceau = ".quack";
 
 //==============================================================================
-/** Un morceau tout neuf, avec quatre pistes et un petit rythme. */
+/** Un morceau vierge : deux pistes MIDI et deux pistes audio, prêtes à recevoir instruments et sons. */
 static std::unique_ptr<te::Edit> creerNouveauMorceau (te::Engine& e)
 {
-    auto fichier = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                       .getChildFile ("MAOQuack")
-                       .getChildFile ("sans_titre.tracktionedit");
+    auto fichier = e.getTemporaryFileManager().getTempFile ("sans_titre.tracktionedit");
     fichier.getParentDirectory().createDirectory();
     fichier.deleteFile();
 
     auto ed = te::createEmptyEdit (e, fichier);
-
-    const Instruments::Type types[] = { Instruments::Type::batterie, Instruments::Type::basse,
-                                        Instruments::Type::melodie, Instruments::Type::accords };
     ed->ensureNumberOfAudioTracks (4);
     auto pistes = te::getAudioTracks (*ed);
 
     for (int i = 0; i < juce::jmin (4, pistes.size()); ++i)
     {
-        pistes[i]->setName (Instruments::nomDe (types[i]));
+        const bool audio = i >= 2;
+        pistes[i]->setName ((audio ? "Audio " : "MIDI ") + juce::String (i + 1));
         pistes[i]->setColour (Couleurs::dePiste (i));
-        Instruments::installer (*pistes[i], types[i]);
-    }
-
-    if (! pistes.isEmpty())
-    {
-        // Un petit rythme pour ne pas partir d'une page blanche
-        const te::BeatRange mesure (te::BeatPosition::fromBeats (0.0), te::BeatPosition::fromBeats (4.0));
-
-        if (auto clip = pistes[0]->insertMIDIClip ("Rythme", ed->tempoSequence.toTime (mesure), nullptr))
-        {
-            auto& seq = clip->getSequence();
-            const int gc = Instruments::premiereNoteBatterie, cc = gc + 1, ch = gc + 2;
-            auto poser = [&seq] (int note, double temps)
-            {
-                seq.addNote (note, te::BeatPosition::fromBeats (temps), te::BeatDuration::fromBeats (0.25), 100, 0, nullptr);
-            };
-
-            for (double t : { 0.0, 2.0, 2.5 })   poser (gc, t);
-            for (double t : { 1.0, 3.0 })        poser (cc, t);
-            for (int i = 0; i < 8; ++i)          poser (ch, i * 0.5);
-        }
+        TypePiste::definirAudio (*pistes[i], audio);
     }
 
     ed->tempoSequence.getTempo (0)->setBpm (120.0);
@@ -63,6 +40,44 @@ static std::unique_ptr<te::Edit> creerNouveauMorceau (te::Engine& e)
     ed->resetChangedStatus();
 
     return ed;
+}
+
+/** Le morceau de démonstration, montré une seule fois : au tout premier lancement. */
+static std::unique_ptr<te::Edit> creerMorceauDeDemo (te::Engine& e)
+{
+    auto fichier = e.getTemporaryFileManager().getTempFile ("demo.tracktionedit");
+    fichier.getParentDirectory().createDirectory();
+
+    if (! fichier.replaceWithData (BinaryData::demo_quack, (size_t) BinaryData::demo_quackSize))
+        return {};
+
+    auto ed = te::loadEditFromFile (e, fichier);
+
+    if (ed == nullptr || te::getAudioTracks (*ed).isEmpty())
+        return {};
+
+    Instruments::reparerSonsBatterie (*ed);     // les sons de batterie sont rangés dans la bibliothèque de cet ordinateur
+    Effets::preparerOscillos (*ed);
+    ed->getTransport().setPosition (te::TimePosition());
+    ed->getUndoManager().clearUndoHistory();
+    ed->resetChangedStatus();
+    return ed;
+}
+
+/** Le morceau affiché au lancement : la démo la toute première fois, un morceau vierge ensuite. */
+static std::unique_ptr<te::Edit> creerMorceauDAccueil (te::Engine& e)
+{
+    const auto temoin = Reglages::dossierDonnees().getChildFile ("demo_deja_vue.txt");
+
+    if (! temoin.existsAsFile())
+    {
+        temoin.replaceWithText ("La demo de MAO Quack a deja ete montree sur cet ordinateur.");
+
+        if (auto demo = creerMorceauDeDemo (e))
+            return demo;
+    }
+
+    return creerNouveauMorceau (e);
 }
 
 //==============================================================================
@@ -122,7 +137,9 @@ public:
     /** Si le morceau a changé, propose de l'enregistrer, puis continue. */
     void verifierPuis (std::function<void()> suite)
     {
-        if (! edit->hasChangedSinceSaved())
+        // On ne pose la question que si l'utilisateur a vraiment fait quelque chose :
+        // un morceau tout juste ouvert (la démo, un morceau vierge) se referme sans rien demander.
+        if (! edit->hasChangedSinceSaved() || ! edit->getUndoManager().canUndo())
         {
             suite();
             return;
@@ -401,6 +418,7 @@ private:
         cadre->liste = std::make_unique<juce::PluginListComponent> (gestionnaire.pluginFormatManager, gestionnaire.knownPluginList,
                                                                     engine.getTemporaryFileManager().getTempFile ("RecherchePlugins"),
                                                                     nullptr);
+        cadre->liste->setNumberOfThreadsForScanning (1);    // la recherche tourne à part : la fenêtre reste vivante
         cadre->addAndMakeVisible (cadre->explication);
         cadre->addAndMakeVisible (*cadre->liste);
         cadre->setSize (760, 520);
@@ -497,6 +515,8 @@ private:
                                             return;
                                         }
 
+                                        Instruments::reparerSonsBatterie (*charge);
+                                        Effets::preparerOscillos (*charge);
                                         charge->getUndoManager().clearUndoHistory();
                                         charge->resetChangedStatus();
                                         moi->remplacer (std::move (charge), f);
@@ -602,7 +622,8 @@ public:
         setUsingNativeTitleBar (true);
         setResizable (true, false);
         setResizeLimits (900, 560, 10000, 10000);
-        afficher (creerNouveauMorceau (engine), {}, true);
+        setIcon (juce::ImageCache::getFromMemory (BinaryData::icone_png, BinaryData::icone_pngSize));
+        afficher (creerMorceauDAccueil (engine), {}, true);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
     }
@@ -662,9 +683,10 @@ public:
             return;
 
         juce::LookAndFeel::setDefaultLookAndFeel (&apparence);
+        Reglages::reprendreAncienDossier();     // les données quittent AppData pour Documents/MAO Quack
         Journal::demarrer (MAOQUACK_VERSION);
         Instruments::preparerSonsBatterie();
-        engine = std::make_unique<te::Engine> (getApplicationName(), std::make_unique<ComportementQuack>(), std::make_unique<ReglagesMoteur>());
+        engine = std::make_unique<te::Engine> (std::make_unique<RangementMoteur>(), std::make_unique<ComportementQuack>(), std::make_unique<ReglagesMoteur>());
         Effets::declarerTypes (*engine);
         fenetre = std::make_unique<FenetrePrincipale> (*engine);
     }

@@ -1,0 +1,591 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<EDIT appVersion="Unknown" projectID="0/8cfa77" creationTime="1794657094963"
+      lastSignificantChange="1a1da83c4a4" modifiedBy="">
+  <TRANSPORT start="0.0" loopPoint1="0.0" loopPoint2="11.2" position="0.0"
+             looping="1"/>
+  <PITCHSEQUENCE>
+    <PITCH startBeat="0.0" pitch="60"/>
+  </PITCHSEQUENCE>
+  <TEMPOSEQUENCE>
+    <TEMPO startBeat="0.0" bpm="150.0" curve="1.0"/>
+    <TIMESIG numerator="4" denominator="4" startBeat="0.0"/>
+  </TEMPOSEQUENCE>
+  <VIDEO/>
+  <CLICKTRACK level="0.6000000238418579" active="0"/>
+  <MASTERVOLUME>
+    <PLUGIN type="volume" volume="0.6376281380653381" id="1001" enabled="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+  </MASTERVOLUME>
+  <RACKS/>
+  <MASTERPLUGINS/>
+  <INPUTDEVICES>
+  </INPUTDEVICES>
+  <TRACKCOMPS/>
+  <SCENES/>
+  <QUACKREPERES/>
+  <ARRANGERTRACK name="Arranger" id="1006"/>
+  <CHORDTRACK name="Chord" id="1008"/>
+  <MARKERTRACK id="1002" name="Marker"/>
+  <TEMPOTRACK name="Global" id="1007">
+    <MODIFIERS/>
+  </TEMPOTRACK>
+  <MASTERTRACK name="Master" id="1009">
+    <MODIFIERS/>
+  </MASTERTRACK>
+  <TRACK id="1003" name="Batterie" colour="ffff6b5e">
+    <MODIFIERS/>
+    <CLIPSLOTS/>
+    <MIDICLIP name="Rythme" start="0.0" length="1.6" offset="0.0" id="1023"
+              sync="0" currentTake="0" speed="1.0" colour="ffff1500">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="36" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.5" l="0.25" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Rythme" start="1.6" length="1.6" offset="0.0" id="1033"
+              sync="0" currentTake="0" speed="1.0" colour="ffff1500">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="36" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.5" l="0.25" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Rythme" start="3.2" length="1.600000000000001" offset="0.0"
+              id="1034" sync="0" currentTake="0" speed="1.0" colour="ffff1500">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="36" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.5" l="0.25" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Rythme" start="4.800000000000001" length="1.600000000000001"
+              offset="0.0" id="1035" sync="0" currentTake="0" speed="1.0" colour="ffff1500">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="36" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.5" l="0.25" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Rythme" start="6.400000000000003" length="1.600000000000002"
+              offset="0.0" id="1049" sync="0" currentTake="0" speed="1.0" colour="ffff1500">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="36" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.5" l="0.25" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Rythme" start="8.000000000000005" length="1.600000000000003"
+              offset="0.0" id="1050" sync="0" currentTake="0" speed="1.0" colour="ffff1500">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="36" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.5" l="0.25" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Rythme" start="9.600000000000009" length="1.600000000000003"
+              offset="0.0" id="1051" sync="0" currentTake="0" speed="1.0" colour="ffff1500">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="36" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="36" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="37" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="0.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="1.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="2.5" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.0" l="0.25" v="100" c="0"/>
+        <NOTE p="38" b="3.5" l="0.25" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <PLUGIN type="sampler" id="1019" enabled="1" remapOnTempoChange="1" quackPreset="Batterie"
+            quackReduit="1">
+      <SOUND source="grosse_caisse.wav"
+             name="Grosse caisse" startTime="0.0" length="0.0" keyNote="36"
+             minNote="36" maxNote="36" gainDb="0.0" pan="0.0" openEnded="1"/>
+      <SOUND source="caisse_claire.wav"
+             name="Caisse claire" startTime="0.0" length="0.0" keyNote="37"
+             minNote="37" maxNote="37" gainDb="0.0" pan="0.0" openEnded="1"/>
+      <SOUND source="charley_ferme.wav"
+             name="Charley ferm&#233;" startTime="0.0" length="0.0" keyNote="38"
+             minNote="38" maxNote="38" gainDb="0.0" pan="0.0" openEnded="1"/>
+      <SOUND source="charley_ouvert.wav"
+             name="Charley ouvert" startTime="0.0" length="0.0" keyNote="39"
+             minNote="39" maxNote="39" gainDb="0.0" pan="0.0" openEnded="1"/>
+      <SOUND source="clap.wav"
+             name="Clap" startTime="0.0" length="0.0" keyNote="40" minNote="40"
+             maxNote="40" gainDb="0.0" pan="0.0" openEnded="1"/>
+      <SOUND source="tom_grave.wav"
+             name="Tom grave" startTime="0.0" length="0.0" keyNote="41" minNote="41"
+             maxNote="41" gainDb="0.0" pan="0.0" openEnded="1"/>
+      <SOUND source="tom_aigu.wav"
+             name="Tom aigu" startTime="0.0" length="0.0" keyNote="42" minNote="42"
+             maxNote="42" gainDb="0.0" pan="0.0" openEnded="1"/>
+      <SOUND source="cymbale.wav"
+             name="Cymbale" startTime="0.0" length="0.0" keyNote="43" minNote="43"
+             maxNote="43" gainDb="0.0" pan="0.0" openEnded="1"/>
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="volume" id="1004" enabled="1" remapOnTempoChange="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="level" id="1005" enabled="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <OUTPUTDEVICES>
+      <DEVICE name="(default audio output)"/>
+    </OUTPUTDEVICES>
+  </TRACK>
+  <TRACK id="1010" name="Basse" colour="ffffb532">
+    <MODIFIERS/>
+    <CLIPSLOTS/>
+    <PLUGIN type="4osc" id="1020" enabled="1" remapOnTempoChange="1" filterType="1"
+            ampAnalog="1" waveShape1="3" waveShape2="2" tune2="-12.0" level2="-6.0"
+            filterFreq="62.0" filterResonance="20.0" modAttack1="0.0" modDecay1="0.25"
+            modSustain1="15.0" ampAttack="0.003000000026077032" ampDecay="0.300000011920929"
+            ampSustain="75.0" ampRelease="0.07999999821186066" masterLevel="-9.0"
+            quackPreset="Basse">
+      <MODIFIERASSIGNMENTS/>
+      <MODMATRIX>
+        <MODMATRIXITEM modParam="filterFreq" modItem="env1" modDepth="0.25"/>
+      </MODMATRIX>
+    </PLUGIN>
+    <PLUGIN type="quackOscillo" id="1054" enabled="1" remapOnTempoChange="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="volume" id="1011" enabled="1" remapOnTempoChange="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="level" id="1012" enabled="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <OUTPUTDEVICES>
+      <DEVICE name="(default audio output)"/>
+    </OUTPUTDEVICES>
+  </TRACK>
+  <TRACK id="1013" name="M&#233;lodie" colour="fffff06a">
+    <MODIFIERS/>
+    <CLIPSLOTS/>
+    <PLUGIN type="4osc" id="1021" enabled="1" remapOnTempoChange="1" filterType="1"
+            ampAnalog="1" waveShape1="3" voices1="2" detune1="0.119999997317791"
+            spread1="50.0" waveShape2="2" level2="-14.0" filterFreq="98.0"
+            ampAttack="0.004000000189989805" ampDecay="0.4000000059604645"
+            ampSustain="70.0" ampRelease="0.25" reverbOn="1" reverbMix="0.1800000071525574"
+            masterLevel="-13.0" quackPreset="M&#233;lodie">
+      <MODIFIERASSIGNMENTS/>
+      <MODMATRIX/>
+    </PLUGIN>
+    <PLUGIN type="volume" id="1014" enabled="1" remapOnTempoChange="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="level" id="1015" enabled="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <OUTPUTDEVICES>
+      <DEVICE name="(default audio output)"/>
+    </OUTPUTDEVICES>
+  </TRACK>
+  <TRACK id="1016" name="Accords" colour="ff7ee06b">
+    <MODIFIERS/>
+    <CLIPSLOTS/>
+    <MIDICLIP name="Accords" start="0.0" length="1.599999999999997" offset="0.0"
+              id="1053" sync="0" currentTake="0" speed="1.0" colour="ff29ff00">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="60" b="0.0" l="4.0" v="100" c="0"/>
+        <NOTE p="51" b="0.0" l="3.999999999999992" v="100" c="0"/>
+        <NOTE p="55" b="0.0" l="3.999999999999992" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Accords" start="1.599999999999997" length="1.599999999999997"
+              offset="0.0" id="1055" sync="0" currentTake="0" speed="1.0" colour="ff29ff00">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="60" b="0.0" l="4.0" v="100" c="0"/>
+        <NOTE p="51" b="0.0" l="3.999999999999992" v="100" c="0"/>
+        <NOTE p="55" b="0.0" l="3.999999999999992" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Accords" start="3.199999999999994" length="1.599999999999997"
+              offset="0.0" id="1056" sync="0" currentTake="0" speed="1.0" colour="ff29ff00">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="60" b="0.0" l="4.0" v="100" c="0"/>
+        <NOTE p="51" b="0.0" l="3.999999999999992" v="100" c="0"/>
+        <NOTE p="55" b="0.0" l="3.999999999999992" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Accords" start="4.799999999999991" length="1.599999999999997"
+              offset="0.0" id="1065" sync="0" currentTake="0" speed="1.0" colour="ff29ff00">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="60" b="0.0" l="4.0" v="100" c="0"/>
+        <NOTE p="51" b="0.0" l="3.999999999999992" v="100" c="0"/>
+        <NOTE p="55" b="0.0" l="3.999999999999992" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Accords" start="6.4" length="1.6" offset="0.0" id="1063"
+              sync="0" currentTake="0" speed="1.0" colour="ff29ff00">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="63" b="0.0" l="4.0" v="100" c="0"/>
+        <NOTE p="56" b="0.0" l="4.0" v="100" c="0"/>
+        <NOTE p="58" b="0.0" l="4.0" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Accords" start="8.0" length="1.600000000000001" offset="0.0"
+              id="1064" sync="0" currentTake="0" speed="1.0" colour="ff29ff00">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="65" b="0.0" l="4.0" v="100" c="0"/>
+        <NOTE p="58" b="0.0" l="4.0" v="100" c="0"/>
+        <NOTE p="60" b="0.0" l="4.0" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Accords" start="9.600000000000001" length="1.599999999999998"
+              offset="0.0" id="1057" sync="0" currentTake="0" speed="1.0" colour="ff29ff00">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="60" b="0.0" l="4.0" v="100" c="0"/>
+        <NOTE p="51" b="0.0" l="3.999999999999992" v="100" c="0"/>
+        <NOTE p="55" b="0.0" l="3.999999999999992" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <PLUGIN type="4osc" id="1022" enabled="1" remapOnTempoChange="1" filterType="1"
+            ampAnalog="1" waveShape1="3" voices1="3" detune1="0.2000000029802322"
+            spread1="80.0" waveShape2="4" level2="-6.0" filterFreq="95.48492431640625"
+            ampAttack="0.119999997317791" ampDecay="0.5" ampRelease="0.6000000238418579"
+            chorusOn="1" reverbOn="1" reverbMix="0.25" masterLevel="-16.0"
+            quackPreset="Accords" quackPage="1" quackReduit="0" base64:parameters="15.lkFazUlbFIWYwA.A8bqP">
+      <MODIFIERASSIGNMENTS/>
+      <AUTOMATIONCURVE paramID="filterFreq">
+        <POINT t="3.1" v="95.48492431640625" c="0.0"/>
+        <POINT t="11.2" v="135.0762329101562" c="0.0"/>
+      </AUTOMATIONCURVE>
+      <MODMATRIX/>
+    </PLUGIN>
+    <PLUGIN type="quackOscillo" id="1052" enabled="1" remapOnTempoChange="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="compressor" id="1062" enabled="1" remapOnTempoChange="1"
+            threshold="0.1132204830646515" ratio="0.25" attack="10.0" release="120.0"
+            sidechainTrigger="1" sidechainSourceID="1003">
+      <MODIFIERASSIGNMENTS/>
+      <SIDECHAINCONNECTIONS>
+        <SIDECHAINCONNECTION srcChan="0" dstChan="0"/>
+        <SIDECHAINCONNECTION srcChan="1" dstChan="1"/>
+        <SIDECHAINCONNECTION srcChan="2" dstChan="2"/>
+        <SIDECHAINCONNECTION srcChan="3" dstChan="2"/>
+      </SIDECHAINCONNECTIONS>
+    </PLUGIN>
+    <PLUGIN type="volume" id="1017" enabled="1" remapOnTempoChange="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="level" id="1018" enabled="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <OUTPUTDEVICES>
+      <DEVICE name="(default audio output)"/>
+    </OUTPUTDEVICES>
+  </TRACK>
+  <TRACK id="1024" name="M&#233;lodie" colour="ff4fd8c9" solo="0">
+    <MODIFIERS/>
+    <CLIPSLOTS/>
+    <MIDICLIP name="M&#233;lodie" start="0.0" length="1.6" offset="0.0" id="1029"
+              sync="0" currentTake="0" speed="1.0" colour="ff00ffe3">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="60" b="0.0" l="0.5" v="100" c="0"/>
+        <NOTE p="63" b="1.0" l="0.5" v="100" c="0"/>
+        <NOTE p="65" b="2.0" l="0.5" v="100" c="0"/>
+        <NOTE p="67" b="3.0" l="0.5" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="M&#233;lodie" start="1.6" length="1.6" offset="0.0" id="1030"
+              sync="0" currentTake="0" speed="1.0" colour="ff00ffe3">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="60" b="0.0" l="0.5" v="100" c="0"/>
+        <NOTE p="63" b="1.0" l="0.5" v="100" c="0"/>
+        <NOTE p="65" b="2.0" l="0.5" v="100" c="0"/>
+        <NOTE p="67" b="3.0" l="0.5" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="M&#233;lodie" start="3.2" length="1.600000000000001" offset="0.0"
+              id="1031" sync="0" currentTake="0" speed="1.0" colour="ff00ffe3">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="60" b="0.0" l="0.5" v="100" c="0"/>
+        <NOTE p="63" b="1.0" l="0.5" v="100" c="0"/>
+        <NOTE p="65" b="2.0" l="0.5" v="100" c="0"/>
+        <NOTE p="67" b="3.0" l="0.5" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="M&#233;lodie" start="4.800000000000001" length="1.600000000000001"
+              offset="0.0" id="1032" sync="0" currentTake="0" speed="1.0" colour="ff00ffe3">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="60" b="0.0" l="0.5" v="100" c="0"/>
+        <NOTE p="63" b="1.0" l="0.5" v="100" c="0"/>
+        <NOTE p="65" b="2.0" l="0.5" v="100" c="0"/>
+        <NOTE p="67" b="3.0" l="0.5" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="M&#233;lodie" start="6.400000000000003" length="1.600000000000002"
+              offset="0.0" id="1046" sync="0" currentTake="0" speed="1.0" colour="ff00ffe3">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="60" b="0.0" l="0.5" v="100" c="0"/>
+        <NOTE p="63" b="1.0" l="0.5" v="100" c="0"/>
+        <NOTE p="65" b="2.0" l="0.5" v="100" c="0"/>
+        <NOTE p="67" b="3.0" l="0.5" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="M&#233;lodie" start="8.000000000000005" length="1.600000000000003"
+              offset="0.0" id="1047" sync="0" currentTake="0" speed="1.0" colour="ff00ffe3">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="60" b="0.0" l="0.5" v="100" c="0"/>
+        <NOTE p="63" b="1.0" l="0.5" v="100" c="0"/>
+        <NOTE p="65" b="2.0" l="0.5" v="100" c="0"/>
+        <NOTE p="67" b="3.0" l="0.5" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="M&#233;lodie" start="9.600000000000009" length="1.600000000000003"
+              offset="0.0" id="1048" sync="0" currentTake="0" speed="1.0" colour="ff00ffe3">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="60" b="0.0" l="0.5" v="100" c="0"/>
+        <NOTE p="63" b="1.0" l="0.5" v="100" c="0"/>
+        <NOTE p="65" b="2.0" l="0.5" v="100" c="0"/>
+        <NOTE p="67" b="3.0" l="0.5" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <PLUGIN type="4osc" id="1027" enabled="1" remapOnTempoChange="1" filterType="1"
+            ampAnalog="1" waveShape1="3" voices1="6" detune1="0.3152000606060028"
+            spread1="50.0" waveShape2="2" level2="-14.0" filterFreq="96.17429351806641"
+            ampAttack="0.004000000189989805" ampDecay="0.4000000059604645"
+            ampSustain="70.0" ampRelease="0.25" reverbOn="1" reverbMix="0.1800000071525574"
+            masterLevel="-13.0" quackPreset="M&#233;lodie" fineTune1="-2.560009717941284"
+            tune1="0.0" waveShape3="4" tune3="12.0" level3="-12.94301223754883"
+            pulseWidth3="0.7885119318962097" voices3="6" detune3="0.2992000877857208"
+            quackPage="1" lfoSync1="0" lfoWaveShape1="0" filterResonance="52.65999603271484">
+      <MODIFIERASSIGNMENTS/>
+      <MODMATRIX>
+        <MODMATRIXITEM modParam="filterFreq" modItem="env1" modDepth="-0.2999999821186066"/>
+      </MODMATRIX>
+    </PLUGIN>
+    <PLUGIN type="quackOscillo" id="1028" enabled="1" remapOnTempoChange="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="quackDistorsion" id="1067" enabled="1" remapOnTempoChange="1"
+            drive="13.7919921875">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="reverb" id="1068" enabled="1" remapOnTempoChange="1" roomSize="0.6000000238418579"
+            wet="0.25" dry="0.800000011920929">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="delay" id="1075" enabled="1" remapOnTempoChange="1" length="400"
+            feedback="-8.0" mix="0.229600116610527">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="volume" id="1025" enabled="1" remapOnTempoChange="1" volume="0.4426393210887909">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="level" id="1026" enabled="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <OUTPUTDEVICES>
+      <DEVICE name="(default audio output)"/>
+    </OUTPUTDEVICES>
+  </TRACK>
+  <TRACK id="1036" name="Bass Stab" colour="ff5aa8ff">
+    <MODIFIERS/>
+    <CLIPSLOTS/>
+    <MIDICLIP name="Bass Stab" start="0.0" length="1.6" offset="0.0" id="1041"
+              sync="0" currentTake="0" speed="1.0" colour="ff0079ff">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="48" b="0.0" l="0.5" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Bass Stab" start="3.2" length="1.600000000000001" offset="0.0"
+              id="1074" sync="0" currentTake="0" speed="1.0" colour="ff0079ff">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="48" b="1.0" l="0.5" v="100" c="0"/>
+        <NOTE p="48" b="0.0" l="0.5" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Bass Stab" start="6.4" length="1.600000000000001" offset="0.0"
+              id="1043" sync="0" currentTake="0" speed="1.0" colour="ff0079ff">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="51" b="0.0" l="0.5" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Bass Stab" start="8.000000000000002" length="1.600000000000001"
+              offset="0.0" id="1044" sync="0" currentTake="0" speed="1.0" colour="ff0079ff">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="50" b="0.0" l="0.5" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <MIDICLIP name="Bass Stab" start="9.600000000000001" length="1.600000000000001"
+              offset="0.0" id="1045" sync="0" currentTake="0" speed="1.0" colour="ff0079ff">
+      <AUTOMATIONCURVES/>
+      <QUANTISATION/>
+      <GROOVE/>
+      <SEQUENCE ver="1" channelNumber="1">
+        <NOTE p="48" b="0.0" l="0.5" v="100" c="0"/>
+      </SEQUENCE>
+    </MIDICLIP>
+    <PLUGIN type="4osc" id="1039" enabled="1" remapOnTempoChange="1" ampAttack="0.001000000047497451"
+            ampDecay="0.300000011920929" ampSustain="75.0" ampRelease="0.07999999821186066"
+            filterDecay="0.25" filterSustain="20.0" filterFreq="96.23149108886719"
+            filterResonance="79.3548583984375" filterAmount="0.3499999940395355"
+            reverbMix="0.6239997744560242" delayMix="0.3903996646404266"
+            masterLevel="-9.0" filterType="1" ampAnalog="1" reverbOn="1"
+            delayOn="1" waveShape1="3" tune2="-12.0" level2="-6.0" spread2="28.06640625"
+            waveShape2="2" tune3="24.0" waveShape3="4" lfoRate2="0.7418463230133057"
+            quackPreset="Bass Stab">
+      <MODIFIERASSIGNMENTS/>
+      <MODMATRIX/>
+    </PLUGIN>
+    <PLUGIN type="quackOscillo" id="1040" enabled="1" remapOnTempoChange="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="volume" id="1037" enabled="1" remapOnTempoChange="1" volume="0.5571058988571167">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <PLUGIN type="level" id="1038" enabled="1">
+      <MODIFIERASSIGNMENTS/>
+    </PLUGIN>
+    <OUTPUTDEVICES>
+      <DEVICE name="(default audio output)"/>
+    </OUTPUTDEVICES>
+  </TRACK>
+</EDIT>

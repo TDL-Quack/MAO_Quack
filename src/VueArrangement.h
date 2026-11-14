@@ -4,6 +4,7 @@
 #include "Instruments.h"
 #include "Effets.h"
 #include "FormesOnde.h"
+#include "ClipAudio.h"
 
 //==============================================================================
 /** L'en-tête d'une piste (à droite, comme dans Ableton) : nom, muet, solo, volume. */
@@ -554,7 +555,7 @@ public:
             double fin = juce::jmax (temps.getStart().inBeats() + 1.0, std::round (xVersTemps (e.x)));
 
             // Un clip audio ne peut pas être plus long que son fichier
-            if (auto* son = dynamic_cast<te::WaveAudioClip*> (clip))
+            if (auto* son = dynamic_cast<te::WaveAudioClip*> (clip); son != nullptr && ! son->getAutoTempo())
             {
                 const double reste = FormesOnde::obtenir (son->getOriginalFile()).duree - clip->getPosition().offset.inSeconds();
                 const auto finMax = edit.tempoSequence.toBeats (clip->getPosition().time.getStart() + te::TimeDuration::fromSeconds (reste));
@@ -562,7 +563,7 @@ public:
             }
 
             if (fin != temps.getEnd().inBeats() && fin > temps.getStart().inBeats())
-                clip->setEnd (edit.tempoSequence.toTime (te::BeatPosition::fromBeats (fin)), false);
+                clip->setEnd (edit.tempoSequence.toTime (te::BeatPosition::fromBeats (fin)), true);
         }
 
         repaint();
@@ -1004,7 +1005,7 @@ private:
             }
             else if (finCouverte)
             {
-                c->setEnd (zone.getStart(), false);     // sa fin est recouverte
+                c->setEnd (zone.getStart(), true);     // sa fin est recouverte
             }
             else
             {
@@ -1012,7 +1013,7 @@ private:
                 if (auto droite = te::duplicateClip (*c))
                     rognerDebut (*droite, zone.getEnd());
 
-                c->setEnd (zone.getStart(), false);
+                c->setEnd (zone.getStart(), true);
             }
         }
     }
@@ -1454,7 +1455,8 @@ private:
             const juce::File fichierSon = son->getOriginalFile();
             const auto& forme = FormesOnde::obtenir (fichierSon);
             const double bpm = edit.tempoSequence.getTempo (0)->getBpm();
-            const double secondesParPixel = 60.0 / bpm / pxParTemps;
+            // Un clip « warpé » suit le tempo du morceau : son dessin est étiré de la même façon
+            const double secondesParPixel = 60.0 / (son->getAutoTempo() ? Warp::bpmOrigine (*son) : bpm) / pxParTemps;
             const double decalage = clip.getPosition().offset.inSeconds();
             const float milieu = (float) contenu.getCentreY();
             const float demi = (float) contenu.getHeight() * 0.5f;

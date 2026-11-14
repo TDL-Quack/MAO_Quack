@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MAOQuack VERSION 0.8.0 LANGUAGES C CXX)
+project(MAOQuack VERSION 0.9.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,6 +20,7 @@ add_subdirectory(external/tracktion_engine/modules/juce)
 add_subdirectory(external/tracktion_engine/modules)
 
 juce_add_gui_app(MAOQuack
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/assets/icone.png"
     PRODUCT_NAME "MAO Quack"
     COMPANY_NAME "TDL-Quack"
     BUNDLE_ID "com.tdlquack.maoquack"
@@ -27,6 +28,11 @@ juce_add_gui_app(MAOQuack
     MICROPHONE_PERMISSION_TEXT "Enregistrer du son avec le micro"
     NEEDS_CURL FALSE
     NEEDS_WEB_BROWSER FALSE)
+
+# Fichiers embarqués dans le programme : le morceau de démonstration et l'icône
+juce_add_binary_data(MAOQuackDonnees SOURCES
+    assets/demo.quack
+    assets/icone.png)
 
 target_sources(MAOQuack PRIVATE
     src/Main.cpp)
@@ -55,6 +61,7 @@ target_link_libraries(MAOQuack PRIVATE
     juce::juce_audio_devices
     juce::juce_audio_processors
     juce::juce_audio_utils
+    MAOQuackDonnees
     juce::juce_recommended_config_flags)
 
 # Export MP3 : encodeur libre LAME (facultatif ; installé par vcpkg lors de la fabrication)

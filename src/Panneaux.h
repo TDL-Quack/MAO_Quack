@@ -19,7 +19,7 @@ public:
     Navigateur (te::Engine& e) : engine (e)
     {
         favoris = Reglages::lireFavoris();
-        ouverts = { "Favoris", "Instruments", "Quack Synth", "Quack Drums", "Effets", "Plugins VST", Vst::sansCategorie() };
+        ouverts = { "Favoris", "Instruments", "Quack Synth", "Effets", fr ("Plugins VST à ranger") };
         recharger();
         definirAideParDefaut();
         startTimer (1500);
@@ -272,6 +272,7 @@ private:
         if (id == "inst:cloches")   return fr ("Un son de cloche qui s'éteint doucement.");
         if (id == "inst:orgue")     return fr ("Un orgue, au son plein et constant.");
         if (id == "inst:jeuvideo")  return fr ("Un son carré, comme dans les vieux jeux vidéo.");
+        if (id == "inst:sampler")   return fr ("Le sampler : il joue un son enregistré comme un instrument, au clavier ou découpé en tranches. Glisse-y ensuite un fichier son.");
         if (id == "inst:init")      return fr ("Le son de base du synthé, tout simple : le point de départ pour fabriquer ton propre son.");
         return fr ("Un de tes préréglages personnels. Clic droit : le supprimer.");
     }
@@ -284,7 +285,7 @@ private:
         {
             Ligne l;
             l.id = e.id;
-            l.nom = e.id == "inst:batterie" ? fr ("Kit électronique") : e.nom;
+            l.nom = e.id == "inst:batterie" ? juce::String ("Quack Drums") : e.nom;
             l.description = descriptionInstrument (e.id);
             l.utilisateur = e.utilisateur;
             elements.add (l);
@@ -315,47 +316,82 @@ private:
         }
     }
 
+    /** Où un plugin est rangé : « » (à ranger), « Instruments », « Effets », ou « Instruments/Dossier »...
+        Les catégories créées avec une version plus ancienne (un simple nom) deviennent des sous-dossiers. */
+    static juce::String categorieNormalisee (const Ligne& plugin)
+    {
+        const auto c = Vst::categories()[plugin.id];
+
+        if (c.isEmpty() || c == Vst::sansCategorie())
+            return {};
+
+        if (c == "Instruments" || c == "Effets" || c.startsWith ("Instruments/") || c.startsWith ("Effets/"))
+            return c;
+
+        return juce::String (plugin.effet ? "Effets/" : "Instruments/") + c;
+    }
+
     /** Menu « Ranger dans... » d'un plugin VST. */
     void menuRangement (const Ligne& ligne)
     {
-        const auto existantes = Vst::categoriesUtilisees();
-        const auto actuelle = Vst::categorieDe (ligne.id);
+        const auto actuelle = categorieNormalisee (ligne);
+        const juce::String racine = ligne.effet ? "Effets" : "Instruments";
+
+        // Les sous-dossiers déjà créés
+        juce::StringArray dossiers;
+        for (auto& e : plugins)
+        {
+            const auto c = categorieNormalisee (e);
+            if (c.contains ("/"))
+                dossiers.addIfNotAlreadyThere (c);
+        }
+        dossiers.sort (true);
 
         juce::PopupMenu m;
         m.addSectionHeader (fr ("Ranger « ") + ligne.nom + fr (" » dans :"));
+        m.addItem (1, "Instruments", true, actuelle == "Instruments");
+        m.addItem (2, "Effets", true, actuelle == "Effets");
 
-        int id = 1;
-        for (auto& c : existantes)
-            m.addItem (id++, c, true, c == actuelle);
+        if (! dossiers.isEmpty())
+            m.addSeparator();
 
-        m.addItem (500, Vst::sansCategorie(), true, actuelle == Vst::sansCategorie());
+        int id = 10;
+        for (auto& d : dossiers)
+            m.addItem (id++, d.replace ("/", "  >  "), true, d == actuelle);
+
         m.addSeparator();
-        m.addItem (501, fr ("Nouvelle catégorie..."));
+        m.addItem (500, fr ("Nouveau dossier dans ") + racine + "...");
+        m.addItem (501, fr ("Retirer du rangement (à ranger)"), actuelle.isNotEmpty());
 
         juce::Component::SafePointer<Navigateur> moi (this);
         const auto idPlugin = ligne.id;
 
-        m.showMenuAsync (juce::PopupMenu::Options(), [moi, idPlugin, existantes] (int choix)
+        m.showMenuAsync (juce::PopupMenu::Options(), [moi, idPlugin, dossiers, racine] (int choix)
         {
             if (moi == nullptr || choix <= 0)
                 return;
 
-            if (choix == 501)
+            if (choix == 500)
             {
-                moi->demanderNouvelleCategorie (idPlugin);
+                moi->demanderNouvelleCategorie (idPlugin, racine);
                 return;
             }
 
-            const auto categorie = choix == 500 ? Vst::sansCategorie() : existantes[choix - 1];
+            juce::String categorie;
+            if (choix == 1)                                         categorie = "Instruments";
+            else if (choix == 2)                                    categorie = "Effets";
+            else if (choix >= 10 && choix - 10 < dossiers.size())   categorie = dossiers[choix - 10];
+
             Vst::definirCategorie (idPlugin, categorie);
-            moi->ouverts.addIfNotAlreadyThere (categorie);
+            moi->ouverts.addIfNotAlreadyThere (categorie.upToFirstOccurrenceOf ("/", false, false));
+            moi->ouverts.addIfNotAlreadyThere (categorie.fromFirstOccurrenceOf ("/", false, false));
             moi->repaint();
         });
     }
 
-    void demanderNouvelleCategorie (const juce::String& idPlugin)
+    void demanderNouvelleCategorie (const juce::String& idPlugin, const juce::String& racine)
     {
-        auto* fenetre = new juce::AlertWindow (fr ("Nouvelle catégorie"),
+        auto* fenetre = new juce::AlertWindow (fr ("Nouveau dossier dans ") + racine,
                                                fr ("Par exemple : Synthés, Pianos, Réverbes, Distorsions..."),
                                                juce::MessageBoxIconType::NoIcon, this);
         fenetre->addTextEditor ("nom", "");
@@ -364,13 +400,14 @@ private:
 
         juce::Component::SafePointer<Navigateur> moi (this);
 
-        fenetre->enterModalState (true, juce::ModalCallbackFunction::create ([moi, fenetre, idPlugin] (int resultat)
+        fenetre->enterModalState (true, juce::ModalCallbackFunction::create ([moi, fenetre, idPlugin, racine] (int resultat)
         {
-            const auto nom = fenetre->getTextEditorContents ("nom").trim();
+            const auto nom = fenetre->getTextEditorContents ("nom").trim().replace ("/", "-");
 
             if (moi != nullptr && resultat == 1 && nom.isNotEmpty())
             {
-                Vst::definirCategorie (idPlugin, nom);
+                Vst::definirCategorie (idPlugin, racine + "/" + nom);
+                moi->ouverts.addIfNotAlreadyThere (racine);
                 moi->ouverts.addIfNotAlreadyThere (nom);
                 moi->repaint();
             }
@@ -411,59 +448,85 @@ private:
                     ajouterElement (e, 1);
         }
 
+        // Les plugins VST se rangent avec le reste : sous « Instruments » ou « Effets », directement
+        // ou dans un sous-dossier. Leur catégorie s'écrit « Instruments », « Effets/Réverbes », etc.
+        auto ajouterPlugins = [&] (const juce::String& racine)
+        {
+            for (auto& e : plugins)
+                if (categorieNormalisee (e) == racine)
+                    ajouterElement (e, 1);
+
+            juce::StringArray sousDossiers;
+            for (auto& e : plugins)
+            {
+                const auto c = categorieNormalisee (e);
+                if (c.startsWith (racine + "/"))
+                    sousDossiers.addIfNotAlreadyThere (c);
+            }
+
+            sousDossiers.sort (true);
+
+            for (auto& chemin : sousDossiers)
+            {
+                const auto nom = chemin.fromFirstOccurrenceOf ("/", false, false);
+                lignes.add (dossier (1, nom, fr ("Un de tes dossiers de plugins. Clic droit sur un plugin pour le changer de place.")));
+
+                if (ouverts.contains (nom))
+                    for (auto& e : plugins)
+                        if (categorieNormalisee (e) == chemin)
+                            ajouterElement (e, 2);
+            }
+        };
+
         lignes.add (dossier (0, "Instruments", fr ("Ce qui fabrique le son d'une piste.")));
         if (ouverts.contains ("Instruments"))
         {
             lignes.add (dossier (1, "Quack Synth", fr ("Le synthétiseur : chaque préréglage est un son tout prêt, que tu peux ensuite modifier."), "inst:init"));
             if (ouverts.contains ("Quack Synth"))
                 for (auto& e : elements)
-                    if (! e.effet && e.id != "inst:batterie")
+                    if (! e.effet && e.id != "inst:batterie" && e.id != "inst:sampler")
                         ajouterElement (e, 2);
 
-            lignes.add (dossier (1, "Quack Drums", fr ("La boîte à rythmes : des sons de batterie rangés sur des pads."), "inst:batterie"));
-            if (ouverts.contains ("Quack Drums"))
-                for (auto& e : elements)
-                    if (e.id == "inst:batterie")
-                        ajouterElement (e, 2);
+            for (auto& e : elements)
+                if (e.id == "inst:batterie" || e.id == "inst:sampler")
+                    ajouterElement (e, 1);
+
+            ajouterPlugins ("Instruments");
         }
 
         lignes.add (dossier (0, "Effets", fr ("Ce qui transforme le son d'une piste, après l'instrument.")));
         if (ouverts.contains ("Effets"))
+        {
             for (auto& e : elements)
                 if (e.effet)
                     ajouterElement (e, 1);
 
-        // Les plugins VST, rangés par catégorie ; un nouveau plugin arrive dans « Sans catégorie »
-        lignes.add (dossier (0, "Plugins VST", fr ("Les instruments et effets VST3 installés sur l'ordinateur. Pour les chercher : "
-                                                    "menu Options > Plugins VST.")));
-        if (ouverts.contains ("Plugins VST"))
+            ajouterPlugins ("Effets");
+        }
+
+        // Les plugins VST fraîchement trouvés attendent ici d'être rangés
+        const auto aRanger = fr ("Plugins VST à ranger");
+        bool resteARanger = false;
+        for (auto& e : plugins)
+            resteARanger = resteARanger || categorieNormalisee (e).isEmpty();
+
+        if (resteARanger || plugins.isEmpty())
         {
-            if (plugins.isEmpty())
+            lignes.add (dossier (0, aRanger, fr ("Les plugins VST3 trouvés sur l'ordinateur et pas encore rangés. Clic droit sur un plugin "
+                                                 "pour le ranger dans Instruments ou Effets. Pour chercher tes plugins : menu Options > Plugins VST.")));
+            if (ouverts.contains (aRanger))
             {
-                Ligne info;
-                info.profondeur = 1;
-                info.nom = fr ("Aucun : menu Options > Plugins VST");
-                lignes.add (info);
-            }
+                if (plugins.isEmpty())
+                {
+                    Ligne info;
+                    info.profondeur = 1;
+                    info.nom = fr ("Aucun : menu Options > Plugins VST");
+                    lignes.add (info);
+                }
 
-            auto categories = Vst::categoriesUtilisees();
-            categories.add (Vst::sansCategorie());
-
-            for (auto& categorie : categories)
-            {
-                bool vide = true;
                 for (auto& e : plugins)
-                    vide = vide && Vst::categorieDe (e.id) != categorie;
-
-                if (vide)
-                    continue;
-
-                lignes.add (dossier (1, categorie, fr ("Une catégorie de plugins VST. Clic droit sur un plugin pour le changer de catégorie.")));
-
-                if (ouverts.contains (categorie))
-                    for (auto& e : plugins)
-                        if (Vst::categorieDe (e.id) == categorie)
-                            ajouterElement (e, 2);
+                    if (categorieNormalisee (e).isEmpty())
+                        ajouterElement (e, 1);
             }
         }
 

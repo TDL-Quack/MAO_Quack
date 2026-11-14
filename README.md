@@ -16,7 +16,8 @@ Décompresser, puis lancer `MAO Quack.exe`.
 - [x] Synthétiseur complet avec préréglages, effets (EQ, Volume, Compressor sidechain, Delay, Reverb, Distortion)
 - [x] Navigateur en arborescence avec favoris, export WAV / MP3 / MIDI (plusieurs formats à la fois)
 - [x] Synthé à onglets avec oscilloscope et modulations par glisser-déposer, barre de menus, périphériques réductibles et déplaçables
-- [ ] Sampler, chargement de sons dans le Drum Rack
+- [x] Quack Sampler (clavier ou tranches), sons personnels dans Quack Drums, warp des clips audio
+- [x] Démo au premier lancement, icône, bibliothèque dans Documents/MAO Quack
 - [x] Pistes et clips audio, boucle, repères
 - [x] Plugins VST3 (recherche, catégories, fenêtre du plugin), automations
 - [ ] Mixage, automation, export

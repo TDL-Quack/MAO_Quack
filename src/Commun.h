@@ -269,11 +269,57 @@ private:
 /** Petits réglages gardés d'une fois sur l'autre (les favoris du navigateur). */
 namespace Reglages
 {
-    inline juce::File dossierDonnees()
+    /** Le dossier de l'utilisateur : Documents/MAO Quack (morceaux, exports, et la bibliothèque). */
+    inline juce::File dossierUtilisateur()
     {
-        auto d = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("MAO Quack");
+        auto d = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("MAO Quack");
         d.createDirectory();
         return d;
+    }
+
+    /** L'ancien emplacement des données (versions avant la 0.9), dans AppData. */
+    inline juce::File ancienDossierDonnees()
+    {
+        return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("MAO Quack");
+    }
+
+    /** La bibliothèque : tout ce que le logiciel range pour lui-même (sons, préréglages, favoris,
+        réglages, journal). Elle est dans Documents/MAO Quack, comme la « User Library » d'Ableton :
+        rien n'est laissé ailleurs sur l'ordinateur. */
+    inline juce::File dossierDonnees()
+    {
+        auto d = dossierUtilisateur().getChildFile (fr ("Bibliothèque"));
+        d.createDirectory();
+        return d;
+    }
+
+    /** Au premier lancement de cette version : reprend les préréglages, favoris et réglages de
+        l'ancien dossier (AppData), puis supprime celui-ci. */
+    inline void reprendreAncienDossier()
+    {
+        const auto ancien = ancienDossierDonnees();
+        if (! ancien.isDirectory())
+            return;
+
+        const auto nouveau = dossierDonnees();
+
+        for (auto nom : { "favoris.txt", "categories_vst.txt" })
+            if (ancien.getChildFile (nom).existsAsFile() && ! nouveau.getChildFile (nom).existsAsFile())
+                ancien.getChildFile (nom).copyFileTo (nouveau.getChildFile (nom));
+
+        // Les réglages du moteur (dont la liste des plugins VST déjà trouvés)
+        auto reglages = nouveau.getChildFile (fr ("Réglages"));
+        reglages.createDirectory();
+        if (ancien.getChildFile ("Settings.xml").existsAsFile() && ! reglages.getChildFile ("Settings.xml").existsAsFile())
+            ancien.getChildFile ("Settings.xml").copyFileTo (reglages.getChildFile ("Settings.xml"));
+
+        auto presets = nouveau.getChildFile ("Presets");
+        presets.createDirectory();
+        for (auto& f : ancien.getChildFile ("Presets").findChildFiles (juce::File::findFiles, false, "*.quackpreset"))
+            if (! presets.getChildFile (f.getFileName()).existsAsFile())
+                f.copyFileTo (presets.getChildFile (f.getFileName()));
+
+        ancien.deleteRecursively();
     }
 
     inline juce::File fichierFavoris()      { return dossierDonnees().getChildFile ("favoris.txt"); }

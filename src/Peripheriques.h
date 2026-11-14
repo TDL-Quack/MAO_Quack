@@ -4,6 +4,7 @@
 #include "Widgets.h"
 #include "Instruments.h"
 #include "Effets.h"
+#include "FormesOnde.h"
 
 //==============================================================================
 /** Un petit texte de titre de section, posé comme un composant (pour pouvoir le cacher avec sa page). */
@@ -438,7 +439,7 @@ private:
 
         for (auto& e : Instruments::catalogue())
         {
-            if (e.id == Instruments::idDe (Instruments::Type::batterie))
+            if (e.id == Instruments::idDe (Instruments::Type::batterie) || e.id == "inst:sampler")
                 continue;
 
             presets.addItem (e.utilisateur ? e.nom + fr ("  (perso)") : e.nom, id);
@@ -853,8 +854,10 @@ private:
 };
 
 //==============================================================================
-/** La batterie : 8 pads, chacun avec son volume et son placement gauche/droite. */
-class PeripheriqueBatterie : public Peripherique
+/** La batterie : 8 pads, chacun avec son volume et son placement gauche/droite.
+    On peut remplacer le son d'un pad : bouton « ... », ou fichier glissé depuis l'explorateur. */
+class PeripheriqueBatterie : public Peripherique,
+                             public juce::FileDragAndDropTarget
 {
 public:
     PeripheriqueBatterie (te::SamplerPlugin& s, te::AudioTrack& t, juce::Colour c)
@@ -862,15 +865,23 @@ public:
     {
         for (int i = 0; i < juce::jmin (8, batterie.getNumSounds()); ++i)
         {
-            const int x = 8 + (i % 4) * 112;
-            const int y = 6 + (1 - i / 4) * 134;        // les sons graves en bas, comme un Drum Rack
+            const auto zone = zonePad (i);
+            const int x = zone.getX(), y = zone.getY();
 
-            auto& pad = ajouter<juce::TextButton> (juce::Rectangle<int> (x, y, 104, 62), batterie.getSoundName (i));
+            auto& pad = ajouter<juce::TextButton> (juce::Rectangle<int> (x, y, 78, 62), batterie.getSoundName (i));
             pad.setWantsKeyboardFocus (false);
             pad.setColour (juce::TextButton::buttonColourId, c.withMultipliedBrightness (0.55f));
             pad.setTriggeredOnMouseDown (true);
             pad.onClick = [this, i] { jouer (batterie.getKeyNote (i)); };
-            definirAide (pad, batterie.getSoundName (i), fr ("Clique pour écouter ce son de batterie."));
+            definirAide (pad, fr ("Pad de batterie"),
+                         fr ("Clique pour écouter ce son. Pour le remplacer par un autre : bouton « ... » à côté, "
+                             "ou glisse un fichier son (WAV, MP3...) depuis l'explorateur sur ce pad."));
+            pads.add (&pad);
+
+            auto& charger = ajouter<juce::TextButton> (juce::Rectangle<int> (x + 80, y, 24, 30), "...");
+            charger.setWantsKeyboardFocus (false);
+            charger.onClick = [this, i] { choisirSon (i); };
+            definirAide (charger, fr ("Changer le son du pad"), fr ("Choisis un fichier son pour remplacer celui de ce pad."));
 
             Potard::Lien volume;
             volume.plage = juce::NormalisableRange<double> (-36.0, 12.0, 0.1);
@@ -896,15 +907,317 @@ public:
         }
     }
 
+    //==========================================================================
+    bool isInterestedInFileDrag (const juce::StringArray& fichiers) override
+    {
+        return ! estReduit() && fichiers.size() > 0 && FormesOnde::estFichierSon (juce::File (fichiers[0]));
+    }
+
+    void filesDropped (const juce::StringArray& fichiers, int x, int y) override
+    {
+        for (int i = 0; i < pads.size(); ++i)
+        {
+            if (zonePad (i).translated (0, hauteurEntete).withHeight (126).contains (x, y))
+            {
+                definirSon (i, juce::File (fichiers[0]));
+                return;
+            }
+        }
+    }
+
 private:
     te::SamplerPlugin& batterie;
     te::AudioTrack::Ptr piste;
     te::MPESourceID source = te::createUniqueMPESourceID();
+    juce::Array<juce::TextButton*> pads;
+    std::shared_ptr<juce::FileChooser> selecteur;
+
+    /** La place du pad numéro i (les sons graves en bas, comme dans un Drum Rack). */
+    static juce::Rectangle<int> zonePad (int i)
+    {
+        return { 8 + (i % 4) * 112, 6 + (1 - i / 4) * 134, 104, 62 };
+    }
 
     void jouer (int note)
     {
         piste->injectLiveMidiMessage (juce::MidiMessage::noteOn (1, note, (juce::uint8) 110), source);
         piste->injectLiveMidiMessage (juce::MidiMessage::noteOff (1, note), source);
+    }
+
+    void choisirSon (int index)
+    {
+        selecteur = std::make_shared<juce::FileChooser> (fr ("Choisir un son pour ce pad"),
+                                                         juce::File::getSpecialLocation (juce::File::userMusicDirectory),
+                                                         "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3");
+        juce::Component::SafePointer<PeripheriqueBatterie> moi (this);
+
+        selecteur->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                [moi, index] (const juce::FileChooser& fc)
+                                {
+                                    if (moi != nullptr && fc.getResult().existsAsFile())
+                                        moi->definirSon (index, fc.getResult());
+                                });
+    }
+
+    void definirSon (int index, const juce::File& fichier)
+    {
+        if (index < 0 || index >= batterie.getNumSounds() || ! FormesOnde::estFichierSon (fichier))
+            return;
+
+        debutGeste();
+        batterie.setSoundMedia (index, fichier.getFullPathName());
+        batterie.setSoundName (index, fichier.getFileNameWithoutExtension());
+
+        if (index < pads.size())
+            pads[index]->setButtonText (batterie.getSoundName (index));
+
+        jouer (batterie.getKeyNote (index));
+    }
+};
+
+//==============================================================================
+/** L'écran du sampler : la forme d'onde du son, les deux bornes (début et fin) à tirer,
+    les tranches, et un trait qui suit la lecture. */
+class EcranSon : public juce::Component,
+                 public Rafraichissable
+{
+public:
+    EcranSon (SampleurQuack& s, juce::Colour c) : sampleur (s), couleur (c)
+    {
+        definirAide (*this, fr ("Le son"),
+                     fr ("Le dessin du son chargé. Tire le trait de gauche (Start) ou de droite (End) pour ne garder qu'une "
+                         "partie du son. En mode Tranches, les traits fins montrent le découpage : chaque part est jouée "
+                         "par une touche, à partir de C1."));
+    }
+
+    void rafraichir() override
+    {
+        sampleur.verifierFichier();
+        repaint();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (1.0f);
+        g.setColour (Couleurs::bordure);
+        g.fillRoundedRectangle (r, 3.0f);
+
+        const auto z = zone();
+        const auto fichier = sampleur.getFichier();
+
+        if (sampleur.fichierValue.get().isEmpty())
+        {
+            g.setColour (Couleurs::texteDoux);
+            g.setFont (juce::FontOptions (14.0f));
+            g.drawFittedText (fr ("Glisse un fichier son ici\n(ou clique sur « Charger un son »)"),
+                              getLocalBounds().reduced (10), juce::Justification::centred, 3);
+            return;
+        }
+
+        const auto& forme = FormesOnde::obtenir (fichier);
+
+        if (forme.duree <= 0.0)
+        {
+            g.setColour (Couleurs::accent);
+            g.setFont (juce::FontOptions (13.0f));
+            g.drawFittedText (fr ("Son introuvable ou illisible :\n") + fichier.getFileName(),
+                              getLocalBounds().reduced (10), juce::Justification::centred, 3);
+            return;
+        }
+
+        const float debut = sampleur.debut->getCurrentValue(), fin = sampleur.fin->getCurrentValue();
+        const float xDebut = z.getX() + z.getWidth() * juce::jmin (debut, fin);
+        const float xFin = z.getX() + z.getWidth() * juce::jmax (debut, fin);
+
+        // La forme d'onde : pleine couleur dans la zone gardée, grisée en dehors
+        const double parPixel = forme.duree / (double) z.getWidth();
+
+        for (int px = 0; px < (int) z.getWidth(); ++px)
+        {
+            const float x = z.getX() + (float) px;
+            const float crete = juce::jmin (1.0f, forme.crete (px * parPixel, (px + 1) * parPixel));
+            const float demi = juce::jmax (0.5f, crete * z.getHeight() * 0.5f);
+
+            g.setColour (x >= xDebut && x <= xFin ? couleur : Couleurs::texteDoux.withAlpha (0.35f));
+            g.drawVerticalLine ((int) x, z.getCentreY() - demi, z.getCentreY() + demi);
+        }
+
+        // Les tranches
+        if (sampleur.modeTranches())
+        {
+            const int nombre = sampleur.nombreDeTranches();
+            g.setFont (juce::FontOptions (9.5f));
+
+            for (int i = 0; i < nombre; ++i)
+            {
+                const float x = xDebut + (xFin - xDebut) * (float) i / (float) nombre;
+                g.setColour (juce::Colours::white.withAlpha (0.6f));
+                g.drawVerticalLine ((int) x, z.getY(), z.getBottom());
+
+                if ((xFin - xDebut) / (float) nombre > 16.0f)
+                    g.drawText (juce::String (i + 1), (int) x + 2, (int) z.getY(), 20, 11, juce::Justification::left, false);
+            }
+        }
+
+        // Les deux bornes
+        g.setColour (Couleurs::accent);
+        g.fillRect (xDebut - 1.0f, z.getY(), 2.0f, z.getHeight());
+        g.fillRect (xFin - 1.0f, z.getY(), 2.0f, z.getHeight());
+        g.fillRect (xDebut - 1.0f, z.getY(), 8.0f, 6.0f);
+        g.fillRect (xFin - 7.0f, z.getY(), 8.0f, 6.0f);
+
+        // Le trait de lecture
+        const float lecture = sampleur.positionDeLecture();
+        if (lecture >= 0.0f && lecture <= 1.0f)
+        {
+            g.setColour (juce::Colours::white);
+            g.fillRect (z.getX() + z.getWidth() * lecture, z.getY(), 1.5f, z.getHeight());
+        }
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        const auto z = zone();
+        const float prop = (e.position.x - z.getX()) / z.getWidth();
+
+        // On attrape la borne la plus proche
+        borne = std::abs (prop - sampleur.debut->getCurrentValue()) <= std::abs (prop - sampleur.fin->getCurrentValue()) ? 0 : 1;
+        sampleur.edit.getUndoManager().beginNewTransaction();
+        mouseDrag (e);
+    }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        const auto z = zone();
+        const float prop = juce::jlimit (0.0f, 1.0f, (e.position.x - z.getX()) / z.getWidth());
+
+        if (borne == 0)
+            sampleur.debut->setParameter (juce::jmin (prop, sampleur.fin->getCurrentValue() - 0.005f), juce::sendNotification);
+        else
+            sampleur.fin->setParameter (juce::jmax (prop, sampleur.debut->getCurrentValue() + 0.005f), juce::sendNotification);
+
+        repaint();
+    }
+
+private:
+    SampleurQuack& sampleur;
+    juce::Colour couleur;
+    int borne = 0;
+
+    juce::Rectangle<float> zone() const     { return getLocalBounds().toFloat().reduced (5.0f, 5.0f); }
+};
+
+//==============================================================================
+/** Quack Sampler : un son joué comme un instrument (au clavier, ou découpé en tranches). */
+class PeripheriqueSampleur : public Peripherique,
+                             public juce::FileDragAndDropTarget
+{
+public:
+    PeripheriqueSampleur (SampleurQuack& s, juce::Colour c)
+        : Peripherique (s, "Quack Sampler", 568, false, c), sampleur (s)
+    {
+        ajouter<EcranSon> (juce::Rectangle<int> (8, 6, 552, 116), sampleur, c);
+
+        auto& charger = ajouter<juce::TextButton> (juce::Rectangle<int> (8, 128, 130, 24), fr ("Charger un son..."));
+        charger.setWantsKeyboardFocus (false);
+        charger.onClick = [this] { choisirSon(); };
+        definirAide (charger, fr ("Charger un son"),
+                     fr ("Choisis le fichier son que le sampler va jouer (WAV, MP3, AIFF, FLAC, OGG). "
+                         "Tu peux aussi glisser un fichier depuis l'explorateur directement sur le sampler."));
+
+        ajouter<TexteVivant> (juce::Rectangle<int> (144, 128, 200, 24),
+                              [this] { return sampleur.fichierValue.get().isEmpty() ? fr ("(aucun son)")
+                                                                                    : sampleur.getFichier().getFileName(); });
+
+        ajouter<ChoixListe> (juce::Rectangle<int> (350, 128, 100, 24),
+                             juce::StringArray { "Clavier", "Tranches" },
+                             [this] { return sampleur.modeValue.get(); },
+                             [this] (int i) { debutGeste(); sampleur.modeValue = i; },
+                             "Mode",
+                             fr ("Clavier : le son est joué plus aigu ou plus grave selon la touche, comme un instrument. "
+                                 "Tranches : le son est découpé en parts égales, une par touche à partir de C1 : idéal pour "
+                                 "rejouer une boucle de batterie morceau par morceau, dans l'ordre que tu veux."));
+
+        ajouter<Interrupteur> (juce::Rectangle<int> (456, 128, 50, 24), "Rev",
+                               [this] { return sampleur.inverseValue.get(); },
+                               [this] (bool etat) { debutGeste(); sampleur.inverseValue = etat; },
+                               "Reverse", fr ("Joue le son à l'envers."));
+
+        ajouter<Interrupteur> (juce::Rectangle<int> (510, 128, 50, 24), "Loop",
+                               [this] { return sampleur.boucleValue.get(); },
+                               [this] (bool etat) { debutGeste(); sampleur.boucleValue = etat; },
+                               "Loop",
+                               fr ("En mode Clavier : tant que la touche est tenue, le son recommence en boucle entre Start et End."));
+
+        int x = 8;
+        const int y = 164;
+        potard (x, y, sampleur.gain, "Gain", fr ("Le volume du sampler."));
+        potard (x += lp, y, sampleur.pitch, "Pitch", fr ("Monte ou descend le son, en demi-tons."));
+        potard (x += lp, y, sampleur.fine, "Fine", fr ("Accordage fin, en centièmes de demi-ton."));
+
+        Potard::Lien base;
+        base.plage = juce::NormalisableRange<double> (24.0, 96.0, 1.0);
+        base.lire = [this] { return (float) sampleur.noteBaseValue.get(); };
+        base.ecrire = [this] (float v) { sampleur.noteBaseValue = juce::roundToInt (v); };
+        base.texte = [] (float v) { return juce::MidiMessage::getMidiNoteName (juce::roundToInt (v), true, true, 3); };
+        base.debutGeste = [this] { debutGeste(); };
+        base.defaut = 60.0;
+        base.aUnDefaut = true;
+        potardLibre (x += lp, y, "Root", base,
+                     fr ("La note de base (mode Clavier) : la touche sur laquelle le son est joué à sa hauteur d'origine."));
+
+        Potard::Lien tranches;
+        tranches.plage = juce::NormalisableRange<double> (2.0, 32.0, 1.0);
+        tranches.lire = [this] { return (float) sampleur.tranchesValue.get(); };
+        tranches.ecrire = [this] (float v) { sampleur.tranchesValue = juce::roundToInt (v); };
+        tranches.texte = [] (float v) { return juce::String (juce::roundToInt (v)) + " parts"; };
+        tranches.debutGeste = [this] { debutGeste(); };
+        tranches.defaut = 8.0;
+        tranches.aUnDefaut = true;
+        potardLibre (x += lp, y, "Slices", tranches,
+                     fr ("En mode Tranches : en combien de parts égales le son est découpé (8 ou 16 pour une boucle d'une ou deux mesures)."));
+
+        separateur (x + lp + 10);
+        etiquette (x + lp + 18, 148, "ENVELOPE");
+        x += lp + 18;
+        potard (x, y, sampleur.attack, "Attack", fr ("Le temps que met le son pour arriver à son maximum."));
+        potard (x += lp, y, sampleur.decay, "Decay", fr ("Le temps pour redescendre jusqu'au niveau Sustain."));
+        potard (x += lp, y, sampleur.sustain, "Sustain", fr ("Le niveau tant que la touche reste tenue."));
+        potard (x += lp, y, sampleur.release, "Release", fr ("Le temps que met le son à s'éteindre quand la touche est relâchée."));
+    }
+
+    //==========================================================================
+    bool isInterestedInFileDrag (const juce::StringArray& fichiers) override
+    {
+        return fichiers.size() > 0 && FormesOnde::estFichierSon (juce::File (fichiers[0]));
+    }
+
+    void filesDropped (const juce::StringArray& fichiers, int, int) override
+    {
+        debutGeste();
+        sampleur.definirFichier (juce::File (fichiers[0]));
+    }
+
+private:
+    SampleurQuack& sampleur;
+    std::shared_ptr<juce::FileChooser> selecteur;
+
+    void choisirSon()
+    {
+        selecteur = std::make_shared<juce::FileChooser> (fr ("Choisir un son"),
+                                                         juce::File::getSpecialLocation (juce::File::userMusicDirectory),
+                                                         "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3");
+        juce::Component::SafePointer<PeripheriqueSampleur> moi (this);
+
+        selecteur->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                [moi] (const juce::FileChooser& fc)
+                                {
+                                    if (moi != nullptr && fc.getResult().existsAsFile())
+                                    {
+                                        moi->debutGeste();
+                                        moi->sampleur.definirFichier (fc.getResult());
+                                    }
+                                });
     }
 };
 
@@ -1453,6 +1766,7 @@ private:
                     p = s;
                 }
                 else if (auto* batterie = dynamic_cast<te::SamplerPlugin*> (plugin))    p = new PeripheriqueBatterie (*batterie, *piste, couleur);
+                else if (auto* sampleur = dynamic_cast<SampleurQuack*> (plugin))        p = new PeripheriqueSampleur (*sampleur, couleur);
                 else if (auto* eq = dynamic_cast<te::EqualiserPlugin*> (plugin))        p = new PeripheriqueEQ (*eq, couleur);
                 else if (auto* comp = dynamic_cast<te::CompressorPlugin*> (plugin))     p = new PeripheriqueCompresseur (*comp, *piste, couleur);
                 else if (auto* delay = dynamic_cast<te::DelayPlugin*> (plugin))         p = new PeripheriqueDelay (*delay, couleur);

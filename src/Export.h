@@ -102,6 +102,28 @@ private:
     };
 };
 
+/** Indique au moteur où ranger ses propres fichiers : dans la bibliothèque (Documents/MAO Quack),
+    et non dans AppData. */
+class RangementMoteur : public te::PropertyStorage
+{
+public:
+    RangementMoteur() : te::PropertyStorage ("MAO Quack") {}
+
+    juce::File getAppPrefsFolder() override
+    {
+        auto d = Reglages::dossierDonnees().getChildFile (fr ("Réglages"));
+        d.createDirectory();
+        return d;
+    }
+
+    juce::File getAppCacheFolder() override
+    {
+        auto d = Reglages::dossierDonnees().getChildFile ("Temporaire");
+        d.createDirectory();
+        return d;
+    }
+};
+
 /** Réglages généraux du moteur audio. */
 class ReglagesMoteur : public te::EngineBehaviour
 {

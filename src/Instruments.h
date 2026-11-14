@@ -2,6 +2,7 @@
 
 #include "Commun.h"
 #include "Vst.h"
+#include "Sampleur.h"
 
 /** Les instruments fournis avec le logiciel : une batterie (sons fabriqués
     par le programme lui-même) et des synthés avec quelques réglages tout prêts. */
@@ -125,8 +126,7 @@ namespace Instruments
     /** Le dossier des sons de batterie ; les fabrique au premier lancement. */
     inline juce::File preparerSonsBatterie()
     {
-        auto dossier = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                           .getChildFile ("MAO Quack").getChildFile ("Sons").getChildFile ("Batterie v1");
+        auto dossier = Reglages::dossierDonnees().getChildFile ("Sons").getChildFile ("Batterie");
         dossier.createDirectory();
 
         int i = 0;
@@ -351,7 +351,8 @@ namespace Instruments
     /** Vrai pour ce qui fabrique le son d'une piste : batterie, synthé, ou instrument VST. */
     inline bool estUnInstrument (te::Plugin& p)
     {
-        if (dynamic_cast<te::SamplerPlugin*> (&p) != nullptr || dynamic_cast<te::FourOscPlugin*> (&p) != nullptr)
+        if (dynamic_cast<te::SamplerPlugin*> (&p) != nullptr || dynamic_cast<te::FourOscPlugin*> (&p) != nullptr
+            || dynamic_cast<SampleurQuack*> (&p) != nullptr)
             return true;
 
         if (auto* externe = dynamic_cast<te::ExternalPlugin*> (&p))
@@ -408,8 +409,7 @@ namespace Instruments
 
     inline juce::File dossierPresets()
     {
-        auto d = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                     .getChildFile ("MAO Quack").getChildFile ("Presets");
+        auto d = Reglages::dossierDonnees().getChildFile ("Presets");
         d.createDirectory();
         return d;
     }
@@ -424,7 +424,12 @@ namespace Instruments
         juce::Array<Entree> liste;
 
         for (auto t : tous())
+        {
             liste.add ({ idDe (t), nomDe (t), false });
+
+            if (t == Type::batterie)
+                liste.add ({ "inst:sampler", "Quack Sampler", false });     // juste après la batterie
+        }
 
         auto fichiers = dossierPresets().findChildFiles (juce::File::findFiles, false, "*.quackpreset");
         fichiers.sort();
@@ -470,6 +475,19 @@ namespace Instruments
             }
         }
 
+        if (id == "inst:sampler")
+        {
+            // Le sampler, vide : on y glisse ensuite un son
+            if (auto plugin = piste.edit.getPluginCache().createNewPlugin (SampleurQuack::xmlTypeName, {}))
+            {
+                retirerInstruments (piste);
+                piste.pluginList.insertPlugin (plugin, 0, nullptr);
+                return true;
+            }
+
+            return false;
+        }
+
         if (id.startsWith ("vsti:"))
         {
             // Un instrument VST
@@ -509,6 +527,35 @@ namespace Instruments
     inline juce::String nomPresetDe (te::Plugin& p)
     {
         return p.state.getProperty (idPreset()).toString();
+    }
+
+    /** Répare les sons de batterie d'un morceau dont les fichiers ont changé de dossier
+        (morceaux enregistrés avant le déplacement de la bibliothèque). */
+    inline void reparerSonsBatterie (te::Edit& edit)
+    {
+        const auto dossier = preparerSonsBatterie();
+
+        for (auto* piste : te::getAudioTracks (edit))
+        {
+            for (auto* p : piste->pluginList.getPlugins())
+            {
+                if (auto* batterie = dynamic_cast<te::SamplerPlugin*> (p))
+                {
+                    for (int i = 0; i < batterie->getNumSounds(); ++i)
+                    {
+                        const juce::File actuel (batterie->getSoundMedia (i));
+
+                        if (! actuel.existsAsFile())
+                        {
+                            const auto remplacant = dossier.getChildFile (actuel.getFileName());
+
+                            if (remplacant.existsAsFile())
+                                batterie->setSoundMedia (i, remplacant.getFullPathName());
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /** Vrai si la piste joue la batterie. */

@@ -35,7 +35,7 @@ public:
             if (auto* clip = selection.clipMidiValide(); clip != nullptr && i >= 0 && i < 5)
             {
                 edit.getUndoManager().beginNewTransaction();
-                clip->setEnd (edit.tempoSequence.toTime (te::BeatPosition::fromBeats (debutClip (*clip) + mesures[i] * 4.0)), false);
+                clip->setEnd (edit.tempoSequence.toTime (te::BeatPosition::fromBeats (debutClip (*clip) + mesures[i] * 4.0)), true);
             }
         };
         definirAide (menuLongueur, fr ("Longueur du clip"),
@@ -792,7 +792,7 @@ private:
         if (fin > longueurClip (c) + 1.0e-6)
         {
             const double nouvelleFin = debutClip (c) + std::ceil (fin / 4.0) * 4.0;
-            c.setEnd (edit.tempoSequence.toTime (te::BeatPosition::fromBeats (nouvelleFin)), false);
+            c.setEnd (edit.tempoSequence.toTime (te::BeatPosition::fromBeats (nouvelleFin)), true);
         }
 
         notesChoisies.clearQuick();

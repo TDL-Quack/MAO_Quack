@@ -1174,3 +1174,32 @@ public:
 private:
     std::function<float()> lire;
 };
+
+
+//==============================================================================
+/** Un petit texte qui se met à jour tout seul (nom du fichier chargé, par exemple). */
+class TexteVivant : public juce::Label,
+                    public Rafraichissable
+{
+public:
+    TexteVivant (std::function<juce::String()> lecture) : lire (std::move (lecture))
+    {
+        setFont (juce::FontOptions (12.5f));
+        setColour (juce::Label::textColourId, Couleurs::texteDoux);
+        setInterceptsMouseClicks (false, false);
+        rafraichir();
+    }
+
+    void rafraichir() override
+    {
+        if (lire)
+        {
+            const auto t = lire();
+            if (t != getText())
+                setText (t, juce::dontSendNotification);
+        }
+    }
+
+private:
+    std::function<juce::String()> lire;
+};
