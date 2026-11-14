@@ -98,32 +98,9 @@ public:
                      fr ("Où on en est dans le morceau : mesure . temps. "
                          "Une mesure contient 4 temps."));
 
-        addAndMakeVisible (reglagesAudio);
-        reglagesAudio.setButtonText (fr ("Réglages audio"));
-        definirAide (reglagesAudio, fr ("Réglages audio"),
-                     fr ("Choisis la sortie du son (casque, enceintes) et le micro. "
-                         "Si tu n'entends rien, c'est ici qu'il faut regarder."));
-
-        reglagesAudio.onClick = [this] { if (surReglagesAudio) surReglagesAudio(); };
-
-        addAndMakeVisible (fichier);
-        fichier.setButtonText ("Fichier");
-        fichier.onClick = [this] { if (surFichier) surFichier(); };
-        definirAide (fichier, fr ("Fichier"),
-                     fr ("Pour créer un nouveau morceau, en ouvrir un, l'enregistrer, ou l'exporter en fichier son "
-                         "(WAV, MP3) ou MIDI. Pense à enregistrer souvent ! Raccourci : Ctrl+S."));
-
-        addAndMakeVisible (titre);
-        titre.setFont (juce::FontOptions (14.0f, juce::Font::bold));
-        titre.setColour (juce::Label::textColourId, Couleurs::accent);
-
         startTimerHz (20);
     }
 
-    std::function<void()> surReglagesAudio, surFichier;
-
-    juce::Component& boutonFichier()                    { return fichier; }
-    void definirTitre (const juce::String& t)           { titre.setText (t, juce::dontSendNotification); }
 
     void lire()
     {
@@ -158,12 +135,7 @@ public:
 
     void resized() override
     {
-        auto r = getLocalBounds().reduced (8, 6);
-
-        fichier.setBounds (r.removeFromLeft (80));
-        r.removeFromLeft (8);
-        reglagesAudio.setBounds (r.removeFromRight (130));
-        titre.setBounds (r.removeFromLeft (juce::jmax (60, (r.getWidth() - 400) / 2)));
+        auto r = getLocalBounds().reduced (8, 5);
 
         // Bloc central
         const int largeurBloc = 110 + 8 + 34 + 24 + 40 + 6 + 40 + 16 + 110;
@@ -183,12 +155,11 @@ public:
 private:
     te::Edit& edit;
 
-    juce::Label titre, position;
+    juce::Label position;
     juce::Slider tempo;
     BoutonForme metronome { "metronome", BoutonForme::Forme::metronome, Couleurs::accent };
     BoutonForme lecture   { "lecture",   BoutonForme::Forme::lecture,   Couleurs::lecture };
     BoutonForme stop      { "stop",      BoutonForme::Forme::stop,      Couleurs::accent };
-    juce::TextButton reglagesAudio, fichier;
 
     void timerCallback() override
     {

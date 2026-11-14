@@ -15,32 +15,65 @@ class ComportementQuack : public te::UIBehaviour
 public:
     void runTaskWithProgressBar (te::ThreadPoolJobWithProgress& tache) override
     {
+        Journal::ecrire ("Tache longue : debut (" + tache.getJobName() + ")");
         Executeur executeur (tache);
 
+        // On laisse la fenêtre vivre pendant le calcul : le moteur a besoin d'elle pour finir proprement
         while (executeur.isThreadRunning())
-            if (! juce::MessageManager::getInstance()->runDispatchLoopUntil (10))
-                break;
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (15);
+
+        Journal::ecrire ("Tache longue : fin");
+    }
+
+    void showWarningMessage (const juce::String& message) override
+    {
+        dernierMessage() = message;
+        Journal::ecrire ("Avertissement du moteur : " + message);
+    }
+
+    void showWarningAlert (const juce::String& titre, const juce::String& message) override
+    {
+        dernierMessage() = titre + " - " + message;
+        Journal::ecrire ("Alerte du moteur : " + titre + " - " + message);
+    }
+
+    /** Le dernier avertissement émis par le moteur audio (vide s'il n'y en a pas eu). */
+    static juce::String& dernierMessage()
+    {
+        static juce::String m;
+        return m;
     }
 
 private:
     struct Executeur : public juce::Thread
     {
-        Executeur (te::ThreadPoolJobWithProgress& t) : juce::Thread (t.getJobName()), tache (t)
+        Executeur (te::ThreadPoolJobWithProgress& t) : juce::Thread ("Rendu MAO Quack"), tache (t)
         {
             startThread();
         }
 
         ~Executeur() override
         {
-            tache.signalJobShouldExit();
-            waitForThreadToExit (10000);
+            // Normalement le fil est déjà terminé ; sinon on l'attend sans bloquer la fenêtre
+            while (isThreadRunning())
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (15);
         }
 
         void run() override
         {
-            while (! threadShouldExit())
-                if (tache.runJob() == juce::ThreadPoolJob::jobHasFinished)
-                    break;
+            try
+            {
+                while (tache.runJob() == juce::ThreadPoolJob::jobNeedsRunningAgain)
+                {}
+            }
+            catch (const std::exception& e)
+            {
+                Journal::ecrire (juce::String ("Exception pendant le rendu : ") + e.what());
+            }
+            catch (...)
+            {
+                Journal::ecrire ("Exception inconnue pendant le rendu");
+            }
         }
 
         te::ThreadPoolJobWithProgress& tache;
@@ -87,7 +120,10 @@ namespace Export
     //==========================================================================
     inline bool rendreWav (te::Edit& edit, const juce::Array<te::Track*>& pistes, const juce::File& fichier, te::TimeRange plage)
     {
+        Journal::ecrire ("Rendu WAV vers " + fichier.getFullPathName());
+        fichier.getParentDirectory().createDirectory();
         fichier.deleteFile();
+        ComportementQuack::dernierMessage() = {};
 
         te::Renderer::Parameters p (edit);
         p.destFile = fichier;
@@ -103,17 +139,30 @@ namespace Export
         p.checkNodesForAudio = false;
 
         const auto resultat = te::Renderer::renderToFile ("Export", p);
-        return resultat.existsAsFile() && resultat.getSize() > 44;
+
+        // Ce qui compte, c'est que le fichier soit bien là et qu'il contienne du son
+        const bool ok = fichier.existsAsFile() && fichier.getSize() > 1024;
+
+        Journal::ecrire ("Rendu WAV termine : retour moteur = " + juce::String (resultat.existsAsFile() ? "fichier" : "vide")
+                            + ", fichier present = " + juce::String (fichier.existsAsFile() ? "oui" : "non")
+                            + ", taille = " + juce::String (fichier.getSize())
+                            + (ComportementQuack::dernierMessage().isNotEmpty() ? ", message = " + ComportementQuack::dernierMessage()
+                                                                                : juce::String()));
+        return ok;
     }
 
    #if QUACK_AVEC_MP3
     inline bool wavVersMp3 (const juce::File& wav, const juce::File& mp3)
     {
         juce::WavAudioFormat format;
+        Journal::ecrire ("Conversion MP3 vers " + mp3.getFullPathName());
         std::unique_ptr<juce::AudioFormatReader> lecteur (format.createReaderFor (wav.createInputStream().release(), true));
 
         if (lecteur == nullptr)
+        {
+            Journal::ecrire ("Conversion MP3 : impossible de relire le WAV temporaire");
             return false;
+        }
 
         auto* lame = lame_init();
         if (lame == nullptr)
@@ -157,6 +206,7 @@ namespace Export
 
         lame_close (lame);
         sortie.flush();
+        Journal::ecrire (juce::String ("Conversion MP3 terminee : ") + (ok ? "ok" : "echec"));
         return ok;
     }
    #endif
@@ -243,14 +293,19 @@ namespace Export
        #endif
     }
 
-    /** Lance l'export. `destination` est un fichier (morceau entier) ou un dossier (une piste par fichier).
+    /** Lance l'export de tous les formats demandés dans le dossier choisi.
         Renvoie un message d'erreur, ou une chaîne vide si tout va bien. */
-    inline juce::String executer (te::Edit& edit, Format format, bool parPiste, const juce::File& destination,
+    inline juce::String executer (te::Edit& edit, const juce::Array<Format>& formats, bool parPiste, const juce::File& dossier,
                                   const juce::String& nomDuMorceau, juce::StringArray& fichiersEcrits)
     {
+        Journal::ecrire ("Export : debut, dossier = " + dossier.getFullPathName() + ", par piste = " + juce::String (parPiste ? "oui" : "non"));
+
         const double finEnTemps = finDuMorceauEnTemps (edit);
         if (finEnTemps <= 0.0)
             return fr ("Le morceau est vide : il n'y a rien à exporter.");
+
+        if (! dossier.createDirectory())
+            return fr ("Impossible de créer ou d'ouvrir ce dossier : ") + dossier.getFullPathName();
 
         edit.getTransport().stop (false, false);
 
@@ -259,44 +314,52 @@ namespace Export
         const te::TimeRange plage (te::TimePosition(), fin);
 
         const auto pistes = te::getAudioTracks (edit);
-        juce::String erreur;
+        const auto base = juce::File::createLegalFileName (nomDuMorceau);
+        juce::StringArray erreurs;
 
-        if (! parPiste)
+        auto ecrireUn = [&] (Format format, const juce::Array<te::AudioTrack*>& lesPistes, const juce::File& f)
         {
-            if (ecrireFichier (edit, format, pistes, destination, plage))
-                fichiersEcrits.add (destination.getFullPathName());
+            if (ecrireFichier (edit, format, lesPistes, f, plage))
+            {
+                fichiersEcrits.add (f.getFullPathName());
+            }
             else
-                erreur = fr ("Le fichier n'a pas pu être créé : ") + destination.getFileName();
-        }
-        else
-        {
-            destination.createDirectory();
-            int numero = 1;
+            {
+                auto e = fr ("Échec : ") + f.getFileName();
+                if (ComportementQuack::dernierMessage().isNotEmpty())
+                    e += " (" + ComportementQuack::dernierMessage() + ")";
+                erreurs.add (e);
+            }
+        };
 
+        for (auto format : formats)
+        {
+            if (! parPiste)
+            {
+                ecrireUn (format, pistes, dossier.getChildFile (base + extensionDe (format)));
+                continue;
+            }
+
+            int numero = 1;
             for (auto* piste : pistes)
             {
-                // Les pistes sans aucune note ne donnent pas de fichier
-                if (piste->getClips().isEmpty())
+                // Les pistes sans aucun clip ne donnent pas de fichier
+                if (! piste->getClips().isEmpty())
                 {
-                    ++numero;
-                    continue;
+                    const auto nom = juce::File::createLegalFileName (base + " - " + juce::String (numero).paddedLeft ('0', 2)
+                                                                          + " " + piste->getName());
+                    ecrireUn (format, { piste }, dossier.getChildFile (nom + extensionDe (format)));
                 }
-
-                const auto nom = juce::File::createLegalFileName (nomDuMorceau + " - " + juce::String (numero).paddedLeft ('0', 2)
-                                                                      + " " + piste->getName());
-                const auto f = destination.getChildFile (nom + extensionDe (format));
-
-                if (ecrireFichier (edit, format, { piste }, f, plage))
-                    fichiersEcrits.add (f.getFullPathName());
-                else
-                    erreur = fr ("Ce fichier n'a pas pu être créé : ") + f.getFileName();
 
                 ++numero;
             }
         }
 
+        Journal::ecrire ("Export : reallocation de la lecture");
         edit.getTransport().ensureContextAllocated();
-        return erreur;
+        Journal::ecrire ("Export : fin, " + juce::String (fichiersEcrits.size()) + " fichier(s), " + juce::String (erreurs.size()) + " erreur(s)");
+
+        return erreurs.joinIntoString ("\n");
     }
 }
 
@@ -307,39 +370,41 @@ class DialogueExport : public juce::Component
 public:
     DialogueExport (te::Edit& e, const juce::String& nom) : edit (e), nomDuMorceau (nom)
     {
-        auto preparer = [this] (juce::ToggleButton& b, const juce::String& texte, int groupe, const juce::String& aide)
+        auto preparer = [this] (juce::ToggleButton& b, const juce::String& texte, int groupe)
         {
             addAndMakeVisible (b);
             b.setButtonText (texte);
             b.setRadioGroupId (groupe);
             b.setColour (juce::ToggleButton::textColourId, Couleurs::texte);
             b.setColour (juce::ToggleButton::tickColourId, Couleurs::accent);
-            b.setTooltip (aide);
+            b.setColour (juce::ToggleButton::tickDisabledColourId, Couleurs::texteDoux);
         };
 
-        preparer (wav,  fr ("WAV  -  le son en qualité maximale"), 1, {});
+        // Les formats se cochent librement : on peut en exporter plusieurs d'un coup
+        preparer (wav,  fr ("WAV  -  le son en qualité maximale"), 0);
         preparer (mp3,  Export::mp3Disponible() ? fr ("MP3  -  le son en plus léger, facile à partager")
-                                                : fr ("MP3  -  pas encore disponible dans cette version"), 1, {});
-        preparer (midi, fr ("MIDI  -  seulement les notes, à rouvrir dans Ableton ou un autre logiciel"), 1, {});
+                                                : fr ("MP3  -  pas disponible dans cette version"), 0);
+        preparer (midi, fr ("MIDI  -  seulement les notes, à rouvrir dans Ableton ou un autre logiciel"), 0);
         mp3.setEnabled (Export::mp3Disponible());
         wav.setToggleState (true, juce::dontSendNotification);
 
-        preparer (entier,   fr ("Le morceau entier, dans un seul fichier"), 2, {});
-        preparer (parPiste, fr ("Une piste par fichier (avec ses effets)"), 2, {});
+        preparer (entier,   fr ("Le morceau entier (un fichier par format)"), 2);
+        preparer (parPiste, fr ("Une piste par fichier (avec ses effets)"), 2);
         entier.setToggleState (true, juce::dontSendNotification);
 
         addAndMakeVisible (exporter);
         exporter.setButtonText ("Exporter...");
         exporter.setColour (juce::TextButton::buttonColourId, Couleurs::accent);
         exporter.setColour (juce::TextButton::textColourOffId, juce::Colours::black);
-        exporter.onClick = [this] { choisirDestination(); };
+        exporter.onClick = [this] { choisirDossier(); };
 
         addAndMakeVisible (message);
-        message.setColour (juce::Label::textColourId, Couleurs::texteDoux);
+        message.setColour (juce::Label::textColourId, Couleurs::texte);
         message.setJustificationType (juce::Justification::topLeft);
         message.setFont (juce::FontOptions (13.0f));
+        message.setMinimumHorizontalScale (1.0f);
 
-        setSize (460, 330);
+        setSize (500, 400);
     }
 
     void paint (juce::Graphics& g) override
@@ -347,7 +412,7 @@ public:
         g.fillAll (Couleurs::panneau);
         g.setColour (Couleurs::accent);
         g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
-        g.drawText ("Format", 16, 10, 300, 20, juce::Justification::centredLeft);
+        g.drawText (fr ("Formats (tu peux en cocher plusieurs)"), 16, 10, 400, 20, juce::Justification::centredLeft);
         g.drawText ("Contenu", 16, 122, 300, 20, juce::Justification::centredLeft);
     }
 
@@ -359,7 +424,7 @@ public:
         entier.setBounds (16, 146, getWidth() - 32, 24);
         parPiste.setBounds (16, 172, getWidth() - 32, 24);
         exporter.setBounds (16, 212, 140, 32);
-        message.setBounds (16, 252, getWidth() - 32, getHeight() - 258);
+        message.setBounds (16, 254, getWidth() - 32, getHeight() - 262);
     }
 
 private:
@@ -370,11 +435,6 @@ private:
     juce::Label message;
     std::shared_ptr<juce::FileChooser> selecteur;
 
-    Export::Format format() const
-    {
-        return mp3.getToggleState() ? Export::Format::mp3 : midi.getToggleState() ? Export::Format::midi : Export::Format::wav;
-    }
-
     static juce::File dossierExports()
     {
         auto d = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
@@ -383,51 +443,39 @@ private:
         return d;
     }
 
-    void choisirDestination()
+    void choisirDossier()
     {
-        const auto f = format();
+        juce::Array<Export::Format> formats;
+        if (wav.getToggleState())    formats.add (Export::Format::wav);
+        if (mp3.getToggleState())    formats.add (Export::Format::mp3);
+        if (midi.getToggleState())   formats.add (Export::Format::midi);
+
+        if (formats.isEmpty())
+        {
+            message.setText (fr ("Coche au moins un format."), juce::dontSendNotification);
+            return;
+        }
+
         const bool pistes = parPiste.getToggleState();
-        const auto ext = Export::extensionDe (f);
         juce::Component::SafePointer<DialogueExport> moi (this);
 
-        if (pistes)
-        {
-            selecteur = std::make_shared<juce::FileChooser> (fr ("Dans quel dossier ranger les fichiers ?"), dossierExports());
-            selecteur->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
-                                    [moi, f] (const juce::FileChooser& fc)
-                                    {
-                                        if (moi != nullptr && fc.getResult() != juce::File())
-                                            moi->lancer (f, true, fc.getResult());
-                                    });
-        }
-        else
-        {
-            selecteur = std::make_shared<juce::FileChooser> (fr ("Exporter le morceau"),
-                                                             dossierExports().getChildFile (nomDuMorceau + ext), "*" + ext);
-            selecteur->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
-                                        | juce::FileBrowserComponent::warnAboutOverwriting,
-                                    [moi, f, ext] (const juce::FileChooser& fc)
-                                    {
-                                        auto fichier = fc.getResult();
-                                        if (moi == nullptr || fichier == juce::File())
-                                            return;
-
-                                        if (! fichier.hasFileExtension (ext))
-                                            fichier = fichier.withFileExtension (ext);
-
-                                        moi->lancer (f, false, fichier);
-                                    });
-        }
+        selecteur = std::make_shared<juce::FileChooser> (fr ("Dans quel dossier ranger les fichiers ?"), dossierExports());
+        selecteur->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                                [moi, formats, pistes] (const juce::FileChooser& fc)
+                                {
+                                    if (moi != nullptr && fc.getResult() != juce::File())
+                                        moi->lancer (formats, pistes, fc.getResult());
+                                });
     }
 
-    void lancer (Export::Format f, bool pistes, const juce::File& destination)
+    void lancer (juce::Array<Export::Format> formats, bool pistes, const juce::File& dossier)
     {
-        message.setText (fr ("Export en cours..."), juce::dontSendNotification);
+        message.setText (fr ("Export en cours... ne touche à rien pendant le calcul."), juce::dontSendNotification);
         exporter.setEnabled (false);
         juce::Component::SafePointer<DialogueExport> moi (this);
 
         // On laisse l'écran afficher « en cours » avant de commencer le calcul
-        juce::Timer::callAfterDelay (60, [moi, f, pistes, destination]
+        juce::Timer::callAfterDelay (80, [moi, formats, pistes, dossier]
         {
             if (moi == nullptr)
                 return;
@@ -436,9 +484,7 @@ private:
             auto& morceau = moi->edit;
             const auto nom = moi->nomDuMorceau;
 
-            juce::MouseCursor::showWaitCursor();    // sablier pendant le calcul
-            const auto erreur = Export::executer (morceau, f, pistes, destination, nom, ecrits);
-            juce::MouseCursor::hideWaitCursor();
+            const auto erreur = Export::executer (morceau, formats, pistes, dossier, nom, ecrits);
 
             if (moi == nullptr)     // la fenêtre a été fermée pendant l'export
                 return;
@@ -446,14 +492,15 @@ private:
             moi->exporter.setEnabled (true);
 
             juce::String texte;
-            if (erreur.isNotEmpty())
-                texte = erreur;
-            else if (ecrits.isEmpty())
-                texte = fr ("Aucun fichier créé : les pistes sont vides.");
-            else if (ecrits.size() == 1)
+            if (ecrits.size() == 1)
                 texte = fr ("Terminé ! Fichier créé :\n") + ecrits[0];
-            else
-                texte = fr ("Terminé ! ") + juce::String (ecrits.size()) + fr (" fichiers créés dans :\n") + destination.getFullPathName();
+            else if (ecrits.size() > 1)
+                texte = fr ("Terminé ! ") + juce::String (ecrits.size()) + fr (" fichiers créés dans :\n") + dossier.getFullPathName();
+            else if (erreur.isEmpty())
+                texte = fr ("Aucun fichier créé : les pistes sont vides.");
+
+            if (erreur.isNotEmpty())
+                texte += (texte.isEmpty() ? "" : "\n\n") + erreur;
 
             moi->message.setText (texte, juce::dontSendNotification);
         });

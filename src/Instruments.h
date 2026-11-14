@@ -227,10 +227,14 @@ namespace Instruments
                 regler (o2.tune, -12.0f);
                 regler (o2.level, -6.0f);
                 regler (s->filterFreq, 62.0f);
-                regler (s->filterAmount, 0.35f);
-                regler (s->filterDecay, 0.25f);
-                regler (s->filterSustain, 20.0f);
                 regler (s->filterResonance, 20.0f);
+
+                // ENV 2 ouvre le filtre au début de chaque note (comme dans Vital ou Serum)
+                regler (s->modEnvParams[0]->modAttack, 0.0f);
+                regler (s->modEnvParams[0]->modDecay, 0.25f);
+                regler (s->modEnvParams[0]->modSustain, 15.0f);
+                regler (s->modEnvParams[0]->modRelease, 0.1f);
+                s->setModulationDepth (te::FourOscPlugin::env1, s->filterFreq, 0.25f);
                 regler (s->ampAttack, 0.003f);
                 regler (s->ampDecay, 0.3f);
                 regler (s->ampSustain, 75.0f);
@@ -320,6 +324,8 @@ namespace Instruments
             case Type::batterie:
                 break;
         }
+
+        static_cast<te::Plugin*> (s)->flushPluginStateToValueTree();
     }
 
     inline const juce::Identifier& idPreset()

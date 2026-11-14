@@ -12,9 +12,55 @@ struct Rafraichissable
 //==============================================================================
 /** Un potard (bouton rotatif) avec son nom dessous. Au survol, le nom laisse place à la valeur. */
 class Potard : public juce::Component,
-               public Rafraichissable
+               public Rafraichissable,
+               public juce::DragAndDropTarget
 {
 public:
+    /** Modulations possibles de ce potard (LFO, enveloppes), façon Vital / Serum :
+        on glisse une source sur le potard, une pastille de couleur apparaît pour doser. */
+    struct Modulation
+    {
+        int nombreSources = 0;
+        std::function<float (int)> lire;                // force entre -1 et 1 ; -1000 si la source n'agit pas
+        std::function<void (int, float)> ecrire;
+        std::function<void (int)> effacer;
+        std::function<juce::Colour (int)> couleur;
+        std::function<juce::String (int)> nom;
+        std::function<float()> positionVivante;         // position en direct (0..1), ou négatif si rien ne bouge
+    };
+
+    void definirModulation (Modulation m)
+    {
+        modulation = std::move (m);
+        pastilles.clear();
+    }
+
+    bool isInterestedInDragSource (const SourceDetails& d) override
+    {
+        return modulation.nombreSources > 0 && d.description.toString().startsWith ("mod:");
+    }
+
+    void itemDragEnter (const SourceDetails&) override   { survolGlisser = true;  repaint(); }
+    void itemDragExit (const SourceDetails&) override    { survolGlisser = false; repaint(); }
+
+    void itemDropped (const SourceDetails& d) override
+    {
+        survolGlisser = false;
+        const int source = d.description.toString().fromFirstOccurrenceOf ("mod:", false, false).getIntValue();
+
+        if (source >= 0 && source < modulation.nombreSources && modulation.lire && modulation.ecrire)
+        {
+            if (lien.debutGeste)
+                lien.debutGeste();
+
+            if (modulation.lire (source) < -1.5f)
+                modulation.ecrire (source, 0.4f);
+        }
+
+        rafraichir();
+        repaint();
+    }
+
     struct Lien
     {
         std::function<float()> lire;
@@ -93,6 +139,60 @@ public:
             survolPrecedent = survol;
             repaint();
         }
+
+        mettreAJourPastilles();
+    }
+
+    void paintOverChildren (juce::Graphics& g) override
+    {
+        if (survolGlisser)
+        {
+            g.setColour (juce::Colours::white);
+            g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (1.0f), 4.0f, 1.5f);
+        }
+
+        if (modulation.nombreSources == 0 || ! modulation.lire)
+            return;
+
+        // Autour du potard : un arc de couleur par modulation, qui montre jusqu'où elle fait bouger le réglage
+        const auto zone = bouton.getBounds().toFloat();
+        const auto centre = zone.getCentre();
+        const float rayon = juce::jmin (zone.getWidth(), zone.getHeight()) * 0.5f - 1.0f;
+        const auto angles = bouton.getRotaryParameters();
+        const float prop = (float) bouton.valueToProportionOfLength (bouton.getValue());
+        auto angleDe = [&angles] (float p)
+        {
+            return angles.startAngleRadians + juce::jlimit (0.0f, 1.0f, p) * (angles.endAngleRadians - angles.startAngleRadians);
+        };
+
+        int rang = 0;
+        for (int i = 0; i < modulation.nombreSources; ++i)
+        {
+            const float force = modulation.lire (i);
+            if (force < -1.5f)
+                continue;
+
+            juce::Path arc;
+            const float a1 = angleDe (prop), a2 = angleDe (prop + force);
+            arc.addCentredArc (centre.x, centre.y, rayon - rang * 2.5f, rayon - rang * 2.5f, 0.0f,
+                               juce::jmin (a1, a2), juce::jmax (a1, a2), true);
+            g.setColour (modulation.couleur ? modulation.couleur (i) : Couleurs::solo);
+            g.strokePath (arc, juce::PathStrokeType (2.0f));
+            ++rang;
+        }
+
+        if (rang > 0 && modulation.positionVivante)
+        {
+            const float vivant = modulation.positionVivante();
+            if (vivant >= 0.0f)
+            {
+                const float a = angleDe (vivant) - juce::MathConstants<float>::halfPi;
+                g.setColour (juce::Colours::white);
+                g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f)
+                                   .withCentre ({ centre.x + std::cos (a) * rayon, centre.y + std::sin (a) * rayon }));
+                repaintDemande = true;
+            }
+        }
     }
 
     void paint (juce::Graphics& g) override
@@ -114,10 +214,306 @@ public:
     }
 
 private:
+    //==========================================================================
+    /** La petite pastille de couleur d'une modulation : on la glisse pour doser, double-clic pour retirer. */
+    class Pastille : public juce::Component
+    {
+    public:
+        Pastille (Potard& p, int s) : potard (p), source (s)
+        {
+            const auto nomSource = potard.modulation.nom ? potard.modulation.nom (source) : juce::String ("Modulation");
+            definirAide (*this, nomSource + " -> " + potard.nom,
+                         fr ("Cette pastille montre que ") + nomSource + fr (" fait bouger ce réglage. Glisse-la vers le haut "
+                             "ou le bas pour doser la force (vers le bas : sens inverse). Double-clic : retirer la modulation."));
+            setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            g.setColour (potard.modulation.couleur ? potard.modulation.couleur (source) : Couleurs::solo);
+            g.fillEllipse (getLocalBounds().toFloat().reduced (0.5f));
+            g.setColour (juce::Colours::black.withAlpha (0.7f));
+            g.drawEllipse (getLocalBounds().toFloat().reduced (0.5f), 1.0f);
+        }
+
+        void mouseDown (const juce::MouseEvent&) override
+        {
+            if (potard.lien.debutGeste)
+                potard.lien.debutGeste();
+
+            depart = potard.modulation.lire ? juce::jlimit (-1.0f, 1.0f, potard.modulation.lire (source)) : 0.0f;
+        }
+
+        void mouseDrag (const juce::MouseEvent& e) override
+        {
+            if (potard.modulation.ecrire)
+                potard.modulation.ecrire (source, juce::jlimit (-1.0f, 1.0f, depart - (float) e.getDistanceFromDragStartY() / 100.0f));
+
+            potard.repaint();
+        }
+
+        void mouseDoubleClick (const juce::MouseEvent&) override
+        {
+            if (potard.modulation.effacer)
+                potard.modulation.effacer (source);
+
+            potard.repaint();
+        }
+
+        Potard& potard;
+        const int source;
+        float depart = 0.0f;
+    };
+
+    void mettreAJourPastilles()
+    {
+        if (modulation.nombreSources == 0 || ! modulation.lire)
+            return;
+
+        juce::Array<int> actives;
+        for (int i = 0; i < modulation.nombreSources; ++i)
+            if (modulation.lire (i) >= -1.5f)
+                actives.add (i);
+
+        bool pareil = actives.size() == pastilles.size();
+        for (int i = 0; pareil && i < actives.size(); ++i)
+            pareil = pastilles[i]->source == actives[i];
+
+        if (! pareil)
+        {
+            pastilles.clear();
+
+            int x = getWidth() - 10;
+            for (int source : actives)
+            {
+                auto* p = pastilles.add (new Pastille (*this, source));
+                addAndMakeVisible (p);
+                p->setBounds (x, 0, 10, 10);
+                x -= 10;
+            }
+
+            repaint();
+        }
+
+        if (repaintDemande)     // un point blanc suit la valeur en direct
+        {
+            repaintDemande = false;
+            repaint();
+        }
+    }
+
     Lien lien;
     juce::String nom;
     juce::Slider bouton;
-    bool survolPrecedent = false;
+    Modulation modulation;
+    juce::OwnedArray<Pastille> pastilles;
+    bool survolPrecedent = false, survolGlisser = false, repaintDemande = false;
+};
+
+//==============================================================================
+/** La poignée d'une source de modulation (LFO, enveloppe) : on la glisse sur un potard. */
+class PoigneeModulation : public juce::Component
+{
+public:
+    PoigneeModulation (int numeroSource, const juce::String& nomSource, juce::Colour c)
+        : source (numeroSource), nom (nomSource), couleur (c)
+    {
+        definirAide (*this, fr ("Assigner ") + nomSource,
+                     fr ("Attrape cette poignée et glisse-la sur n'importe quel potard du synthé : ") + nomSource
+                         + fr (" le fera alors bouger tout seul. Pendant le glisser, passe sur un onglet pour l'ouvrir. "
+                               "Une pastille de la même couleur apparaît sur le potard pour doser l'effet."));
+        setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (0.5f);
+        g.setColour (couleur);
+        g.fillRoundedRectangle (r, 4.0f);
+
+        // Les petits points d'une poignée
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
+        for (int i = 0; i < 2; ++i)
+            for (int j = 0; j < 3; ++j)
+                g.fillEllipse (r.getX() + 5.0f + i * 4.0f, r.getCentreY() - 5.0f + j * 4.0f, 2.2f, 2.2f);
+
+        g.setColour (juce::Colours::black);
+        g.setFont (juce::FontOptions (11.5f, juce::Font::bold));
+        g.drawText (fr ("Glisser sur un potard"), getLocalBounds().withTrimmedLeft (16), juce::Justification::centred, true);
+    }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (e.getDistanceFromDragStart() < 4)
+            return;
+
+        if (auto* conteneur = juce::DragAndDropContainer::findParentDragContainerFor (this))
+            if (! conteneur->isDragAndDropActive())
+                conteneur->startDragging ("mod:" + juce::String (source), this);
+    }
+
+private:
+    int source;
+    juce::String nom;
+    juce::Colour couleur;
+};
+
+//==============================================================================
+/** Oscilloscope : dessine en temps réel le son qui sort de l'instrument. */
+class EcranOscillo : public juce::Component,
+                     private juce::Timer
+{
+public:
+    EcranOscillo (std::function<void (float*, int)> lecture, juce::Colour c)
+        : lire (std::move (lecture)), couleur (c)
+    {
+        definirAide (*this, "Oscilloscope",
+                     fr ("Le son du synthé, dessiné en direct pendant qu'il joue. Change une forme d'onde, le filtre ou "
+                         "l'enveloppe et regarde le dessin se transformer : c'est la meilleure façon de comprendre ce que fait chaque réglage."));
+        startTimerHz (30);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (1.0f);
+        g.setColour (Couleurs::bordure);
+        g.fillRoundedRectangle (r, 3.0f);
+
+        const auto z = r.reduced (3.0f, 4.0f);
+        g.setColour (Couleurs::grille);
+        g.drawHorizontalLine ((int) z.getCentreY(), z.getX(), z.getRight());
+
+        // On cale l'image sur une montée du signal pour qu'elle ne défile pas
+        int depart = 0;
+        for (int i = 1; i < total - visibles; ++i)
+        {
+            if (echantillons[(size_t) (i - 1)] <= 0.0f && echantillons[(size_t) i] > 0.0f)
+            {
+                depart = i;
+                break;
+            }
+        }
+
+        juce::Path p;
+        for (int i = 0; i < visibles; ++i)
+        {
+            const float x = z.getX() + z.getWidth() * (float) i / (float) (visibles - 1);
+            const float y = z.getCentreY() - juce::jlimit (-1.0f, 1.0f, echantillons[(size_t) (depart + i)] * gain) * z.getHeight() * 0.5f;
+
+            if (i == 0)   p.startNewSubPath (x, y);
+            else          p.lineTo (x, y);
+        }
+
+        g.setColour (couleur);
+        g.strokePath (p, juce::PathStrokeType (1.5f));
+    }
+
+private:
+    static constexpr int total = 2048, visibles = 900;
+
+    std::function<void (float*, int)> lire;
+    juce::Colour couleur;
+    std::array<float, (size_t) total> echantillons {};
+    float gain = 1.0f;
+
+    void timerCallback() override
+    {
+        if (! isShowing() || ! lire)
+            return;
+
+        lire (echantillons.data(), total);
+
+        // Zoom automatique doux : un son faible reste lisible
+        float crete = 0.0f;
+        for (float v : echantillons)
+            crete = juce::jmax (crete, std::abs (v));
+
+        const float cible = crete > 0.001f ? juce::jlimit (1.0f, 12.0f, 0.85f / crete) : gain;
+        gain += (cible - gain) * 0.2f;
+        repaint();
+    }
+};
+
+//==============================================================================
+/** Écran d'un LFO : sa forme, avec un point qui la parcourt à sa vitesse. */
+class EcranLfo : public juce::Component,
+                 private juce::Timer
+{
+public:
+    /** Formes : 0 aucune, 1 sinus, 2 triangle, 3 scie montante, 4 scie descendante, 5 carré, 6 aléatoire */
+    EcranLfo (std::function<int()> lireForme, std::function<float()> lireVitesseHz, juce::Colour c)
+        : forme (std::move (lireForme)), vitesse (std::move (lireVitesseHz)), couleur (c)
+    {
+        definirAide (*this, "LFO",
+                     fr ("Un LFO est un oscillateur très lent : on ne l'entend pas, il fait bouger un réglage tout seul "
+                         "(vibrato, wah-wah, trémolo...). Ce dessin montre son mouvement ; le point avance à sa vitesse."));
+        startTimerHz (30);
+    }
+
+    static float valeur (int f, float phase)
+    {
+        switch (f)
+        {
+            case 1:  return std::sin (phase * juce::MathConstants<float>::twoPi);
+            case 2:  return phase < 0.5f ? (4.0f * phase - 1.0f) : (3.0f - 4.0f * phase);
+            case 3:  return 2.0f * phase - 1.0f;
+            case 4:  return 1.0f - 2.0f * phase;
+            case 5:  return phase < 0.5f ? 1.0f : -1.0f;
+            case 6:
+            {
+                static const float pas[] = { 0.3f, -0.6f, 0.8f, -0.2f, 0.5f, -0.9f, 0.1f, 0.65f };
+                return pas[juce::jlimit (0, 7, (int) (phase * 8.0f))];
+            }
+            default: return 0.0f;
+        }
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (1.0f);
+        g.setColour (Couleurs::bordure);
+        g.fillRoundedRectangle (r, 3.0f);
+
+        const auto z = r.reduced (5.0f, 6.0f);
+        const int f = forme ? forme() : 0;
+
+        juce::Path p;
+        for (int i = 0; i <= 96; ++i)
+        {
+            const float phase = juce::jmin (0.9999f, (float) i / 96.0f);
+            const float x = z.getX() + z.getWidth() * (float) i / 96.0f;
+            const float y = z.getCentreY() - valeur (f, phase) * z.getHeight() * 0.5f;
+
+            if (i == 0)   p.startNewSubPath (x, y);
+            else          p.lineTo (x, y);
+        }
+
+        g.setColour (f == 0 ? Couleurs::texteDoux.withAlpha (0.4f) : couleur);
+        g.strokePath (p, juce::PathStrokeType (1.6f));
+
+        if (f != 0)
+        {
+            const float ph = (float) phaseActuelle;
+            g.setColour (juce::Colours::white);
+            g.fillEllipse (juce::Rectangle<float> (7.0f, 7.0f)
+                               .withCentre ({ z.getX() + z.getWidth() * ph, z.getCentreY() - valeur (f, ph) * z.getHeight() * 0.5f }));
+        }
+    }
+
+private:
+    std::function<int()> forme;
+    std::function<float()> vitesse;
+    juce::Colour couleur;
+    double phaseActuelle = 0.0;
+
+    void timerCallback() override
+    {
+        if (! isShowing())
+            return;
+
+        phaseActuelle = std::fmod (phaseActuelle + (vitesse ? (double) vitesse() : 1.0) / 30.0, 1.0);
+        repaint();
+    }
 };
 
 //==============================================================================

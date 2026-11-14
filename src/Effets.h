@@ -171,6 +171,63 @@ private:
 inline const char* VolumeQuack::xmlTypeName = "quackVolume";
 
 //==============================================================================
+/** Oscilloscope : ne change pas le son, il en garde une copie pour l'afficher en temps réel.
+    Il est placé automatiquement juste après le synthé et n'apparaît pas dans la chaîne. */
+class OscilloQuack : public te::Plugin
+{
+public:
+    static const char* getPluginName()      { return "Oscilloscope"; }
+    static const char* xmlTypeName;
+    static constexpr int taille = 4096;
+
+    OscilloQuack (te::PluginCreationInfo info) : te::Plugin (info) {}
+    ~OscilloQuack() override                                { notifyListenersOfDeletion(); }
+
+    juce::String getName() const override                   { return getPluginName(); }
+    juce::String getPluginType() override                   { return xmlTypeName; }
+    juce::String getSelectableDescription() override        { return getName(); }
+    BusLayout getBusses() const override                    { return BusLayout::singlePassThrough(); }
+
+    void initialise (const te::PluginInitialisationInfo&) override {}
+    void deinitialise() override {}
+
+    void applyToBuffer (const te::PluginRenderContext& fc) override
+    {
+        if (fc.destBuffer == nullptr || fc.destBuffer->getNumChannels() < 1)
+            return;
+
+        const auto* g = fc.destBuffer->getReadPointer (0, fc.bufferStartSample);
+        const auto* d = fc.destBuffer->getNumChannels() > 1 ? fc.destBuffer->getReadPointer (1, fc.bufferStartSample) : g;
+        int pos = ecriture.load (std::memory_order_relaxed);
+
+        for (int i = 0; i < fc.bufferNumSamples; ++i)
+        {
+            tampon[(size_t) pos] = 0.5f * (g[i] + d[i]);
+            pos = (pos + 1) & (taille - 1);
+        }
+
+        ecriture.store (pos, std::memory_order_relaxed);
+    }
+
+    /** Copie les `nombre` derniers échantillons (du plus ancien au plus récent). */
+    void lire (float* destination, int nombre) const
+    {
+        const int pos = ecriture.load (std::memory_order_relaxed);
+
+        for (int i = 0; i < nombre; ++i)
+            destination[i] = tampon[(size_t) ((pos - nombre + i + taille * 2) & (taille - 1))];
+    }
+
+private:
+    std::array<float, (size_t) taille> tampon {};
+    std::atomic<int> ecriture { 0 };
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OscilloQuack)
+};
+
+inline const char* OscilloQuack::xmlTypeName = "quackOscillo";
+
+//==============================================================================
 /** Le catalogue des effets fournis. */
 namespace Effets
 {
@@ -215,6 +272,7 @@ namespace Effets
     {
         engine.getPluginManager().createBuiltInType<DistorsionQuack>();
         engine.getPluginManager().createBuiltInType<VolumeQuack>();
+        engine.getPluginManager().createBuiltInType<OscilloQuack>();
     }
 
     inline bool estInstrument (te::Plugin& p)
@@ -243,8 +301,60 @@ namespace Effets
         return chaine;
     }
 
-    /** Ajoute un effet à la fin de la chaîne de la piste (juste avant son volume). */
-    inline te::Plugin::Ptr ajouter (te::AudioTrack& piste, const juce::String& id)
+    /** L'oscilloscope placé après l'instrument de la piste ; le crée s'il manque. */
+    inline OscilloQuack* oscilloDe (te::AudioTrack& piste, bool creerSiAbsent)
+    {
+        if (auto* o = piste.pluginList.findFirstPluginOfType<OscilloQuack>())
+            return o;
+
+        if (! creerSiAbsent)
+            return nullptr;
+
+        int index = 0;
+        for (auto* p : piste.pluginList.getPlugins())
+        {
+            if (estInstrument (*p))
+            {
+                index = piste.pluginList.indexOf (p) + 1;
+                break;
+            }
+        }
+
+        if (auto plugin = piste.edit.getPluginCache().createNewPlugin (OscilloQuack::xmlTypeName, {}))
+        {
+            piste.pluginList.insertPlugin (plugin, index, nullptr);
+            return dynamic_cast<OscilloQuack*> (plugin.get());
+        }
+
+        return nullptr;
+    }
+
+    /** La place, dans la liste complète des plugins de la piste, qui correspond à la position
+        `positionDansChaine` de la chaîne affichée (-1 = à la fin, juste avant le volume de la piste). */
+    inline int indexReel (te::AudioTrack& piste, int positionDansChaine)
+    {
+        const auto chaine = chaineDe (piste);
+
+        if (positionDansChaine >= 0 && positionDansChaine < chaine.size())
+        {
+            // Jamais avant l'instrument (ni avant son oscilloscope)
+            int index = piste.pluginList.indexOf (chaine[positionDansChaine]);
+
+            for (auto* p : piste.pluginList.getPlugins())
+                if (estInstrument (*p) || dynamic_cast<OscilloQuack*> (p) != nullptr)
+                    index = juce::jmax (index, piste.pluginList.indexOf (p) + 1);
+
+            return index;
+        }
+
+        if (auto* vol = piste.getVolumePlugin())
+            return juce::jmax (0, piste.pluginList.indexOf (vol));
+
+        return piste.pluginList.size();
+    }
+
+    /** Ajoute un effet dans la chaîne de la piste, à la position voulue (-1 = à la fin). */
+    inline te::Plugin::Ptr ajouter (te::AudioTrack& piste, const juce::String& id, int positionDansChaine = -1)
     {
         const auto* info = trouver (id);
         if (info == nullptr)
@@ -254,10 +364,7 @@ namespace Effets
         if (plugin == nullptr)
             return {};
 
-        int index = piste.pluginList.size();
-        if (auto* vol = piste.getVolumePlugin())
-            index = juce::jmax (0, piste.pluginList.indexOf (vol));
-
+        const int index = indexReel (piste, positionDansChaine);
         piste.pluginList.insertPlugin (plugin, index, nullptr);
 
         // Quelques réglages de départ agréables
@@ -283,5 +390,53 @@ namespace Effets
         }
 
         return plugin;
+    }
+}
+
+namespace Effets
+{
+    /** Déplace un effet déjà présent vers une autre position de la chaîne affichée. */
+    inline void deplacer (te::AudioTrack& piste, te::Plugin& plugin, int positionDansChaine)
+    {
+        if (estInstrument (plugin))
+            return;
+
+        auto parent = plugin.state.getParent();
+        const int ancien = parent.indexOf (plugin.state);
+        if (! parent.isValid() || ancien < 0)
+            return;
+
+        // La cible est exprimée par rapport à un autre plugin : on la retrouve dans l'arbre d'état
+        const auto chaine = chaineDe (piste);
+        int cible = -1;
+
+        if (positionDansChaine >= 0 && positionDansChaine < chaine.size())
+        {
+            if (chaine[positionDansChaine] == &plugin)
+                return;
+
+            cible = parent.indexOf (chaine[positionDansChaine]->state);
+        }
+        else if (auto* vol = piste.getVolumePlugin())
+        {
+            cible = parent.indexOf (vol->state);
+        }
+
+        if (cible < 0)
+            cible = parent.getNumChildren();
+
+        // Jamais avant l'instrument ni son oscilloscope
+        for (auto* p : piste.pluginList.getPlugins())
+            if (estInstrument (*p) || dynamic_cast<OscilloQuack*> (p) != nullptr)
+                cible = juce::jmax (cible, parent.indexOf (p->state) + 1);
+
+        if (cible > ancien)
+            --cible;        // on retire d'abord l'élément : tout ce qui suit recule d'un cran
+
+        if (cible != ancien)
+        {
+            parent.moveChild (ancien, cible, &piste.edit.getUndoManager());
+            piste.edit.restartPlayback();
+        }
     }
 }

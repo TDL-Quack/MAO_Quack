@@ -11,7 +11,7 @@ class PanneauBas : public juce::Component,
                    private juce::ChangeListener
 {
 public:
-    static constexpr int hauteurOnglets = 26;
+    static constexpr int hauteurOnglets = 20;
 
     PanneauBas (te::Edit& e, Selection& sel)
         : edit (e), selection (sel), pianoRoll (e, sel), chaine (e, sel)
@@ -27,13 +27,17 @@ public:
             b.setRadioGroupId (77);
             b.setWantsKeyboardFocus (false);
             b.setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
+            b.setColour (juce::TextButton::buttonColourId, Couleurs::bordure);
+            b.setColour (juce::TextButton::buttonOnColourId, Couleurs::panneauClair);
+            b.setColour (juce::TextButton::textColourOffId, Couleurs::texteDoux);
+            b.setColour (juce::TextButton::textColourOnId, Couleurs::accent);
             b.onClick = [this, index, &b] { if (b.getToggleState()) montrer (index); };
             definirAide (b, texte, aide);
         };
 
         preparer (ongletNotes, "Notes", 0,
                   fr ("Affiche le piano roll : les notes du clip choisi. Raccourci pour changer d'onglet : Tab."));
-        preparer (ongletInstrument, "Instrument et effets", 1,
+        preparer (ongletInstrument, "Instrument", 1,
                   fr ("Affiche l'instrument de la piste choisie et ses effets, avec tous leurs réglages. "
                       "Raccourci pour changer d'onglet : Tab."));
 
@@ -64,23 +68,24 @@ public:
 
         if (auto* piste = selection.pisteValide())
         {
-            auto r = getLocalBounds().removeFromTop (hauteurOnglets).withTrimmedLeft (340).reduced (8, 0);
+            auto r = getLocalBounds().removeFromTop (hauteurOnglets).withTrimmedRight (160).reduced (8, 0);
             const int numPiste = te::getAudioTracks (edit).indexOf (piste);
 
             g.setColour (couleurPiste (*piste, numPiste));
             g.fillRoundedRectangle (r.removeFromLeft (12).withSizeKeepingCentre (10, 10).toFloat(), 2.0f);
             g.setColour (Couleurs::texte);
-            g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
-            g.drawText (fr ("Piste : ") + piste->getName(), r.withTrimmedLeft (6), juce::Justification::centredLeft, true);
+            g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+            g.drawText (piste->getName(), r.withTrimmedLeft (6), juce::Justification::centredLeft, true);
         }
     }
 
     void resized() override
     {
         auto r = getLocalBounds();
+        // De petits onglets discrets, à droite, comme les sélecteurs de vue d'Ableton
         auto barre = r.removeFromTop (hauteurOnglets).reduced (4, 2);
-        ongletNotes.setBounds (barre.removeFromLeft (110));
-        ongletInstrument.setBounds (barre.removeFromLeft (200));
+        ongletInstrument.setBounds (barre.removeFromRight (84));
+        ongletNotes.setBounds (barre.removeFromRight (60));
         pianoRoll.setBounds (r);
         chaine.setBounds (r);
     }

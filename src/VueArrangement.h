@@ -68,6 +68,9 @@ public:
             if (auto* vp = piste.getVolumePlugin())
                 vp->setVolumeDb ((float) volume.getValue());
         };
+        for (auto* enfant : std::initializer_list<juce::Component*> { &muet, &solo, &volume, &menu })
+            enfant->addMouseListener (this, false);
+
         definirAide (volume, fr ("Volume"),
                      fr ("Le niveau sonore de la piste. Glisse à droite pour monter, "
                          "à gauche pour baisser. Double-clique pour revenir à 0 dB."));
@@ -122,10 +125,11 @@ public:
 
     void mouseDown (const juce::MouseEvent& e) override
     {
+        // Un clic n'importe où sur l'en-tête (même sur un bouton) choisit la piste
         if (surChoix)
             surChoix (piste);
 
-        if (e.mods.isPopupMenu() && surMenu)
+        if (e.mods.isPopupMenu() && surMenu && (e.eventComponent == this || e.eventComponent == &nom))
             surMenu (piste, menu);
     }
 

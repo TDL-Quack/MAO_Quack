@@ -6,16 +6,38 @@
 #include "Effets.h"
 
 //==============================================================================
-/** Un périphérique (instrument ou effet) affiché dans la chaîne du bas, comme dans Ableton. */
+/** Un petit texte de titre de section, posé comme un composant (pour pouvoir le cacher avec sa page). */
+class TexteSection : public juce::Component
+{
+public:
+    TexteSection (const juce::String& t) : texte (t)    { setInterceptsMouseClicks (false, false); }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.setColour (Couleurs::texteDoux);
+        g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+        g.drawText (texte, getLocalBounds(), juce::Justification::centredLeft, false);
+    }
+
+private:
+    juce::String texte;
+};
+
+//==============================================================================
+/** Un périphérique (instrument ou effet) affiché dans la chaîne du bas, comme dans Ableton.
+    Son en-tête permet de l'éteindre, de le réduire, de le déplacer (en le glissant) ou de le supprimer. */
 class Peripherique : public juce::Component
 {
 public:
     static constexpr int hauteurEntete = 24;
     static constexpr int hauteurTotale = 298;
+    static constexpr int largeurReduite = 30;
 
-    Peripherique (te::Plugin& p, const juce::String& titreAffiche, int largeurVoulue, bool supprimable, juce::Colour c)
-        : plugin (&p), titre (titreAffiche), largeur (largeurVoulue), couleur (c)
+    Peripherique (te::Plugin& p, const juce::String& titreAffiche, int largeurVoulue, bool estUnEffet, juce::Colour c)
+        : plugin (&p), titre (titreAffiche), largeur (largeurVoulue), couleur (c), effet (estUnEffet)
     {
+        reduit = (bool) plugin->state.getProperty (idReduit(), false);
+
         addAndMakeVisible (marche);
         marche.setButtonText ("On");
         marche.setClickingTogglesState (true);
@@ -29,7 +51,14 @@ public:
         definirAide (marche, fr ("Activer / désactiver"),
                      fr ("Allume ou éteint ce périphérique sans le supprimer. Pratique pour comparer avec et sans."));
 
-        if (supprimable)
+        addAndMakeVisible (reduire);
+        reduire.setWantsKeyboardFocus (false);
+        reduire.onClick = [this] { definirReduit (! reduit); };
+        definirAide (reduire, fr ("Réduire / agrandir"),
+                     fr ("Replie ce périphérique en une fine bande pour gagner de la place, ou le rouvre. "
+                         "Un double-clic sur sa barre de titre fait la même chose."));
+
+        if (effet)
         {
             addAndMakeVisible (supprimer);
             supprimer.setButtonText ("X");
@@ -37,16 +66,40 @@ public:
             supprimer.onClick = [this] { if (surSupprimer) surSupprimer(); };
             definirAide (supprimer, fr ("Supprimer l'effet"), fr ("Retire cet effet de la piste."));
         }
+
+        definirAide (*this, titre,
+                     effet ? fr ("Un effet de la chaîne. Attrape sa barre de titre et glisse-la pour le déplacer avant ou après "
+                                 "un autre effet. Double-clic sur la barre : réduire.")
+                           : fr ("L'instrument de la piste : c'est lui qui fabrique le son, toujours en premier dans la chaîne. "
+                                 "Double-clic sur la barre de titre : réduire."));
     }
 
     te::Plugin& getPlugin()         { return *plugin; }
-    int getLargeur() const          { return largeur; }
+    bool estEffet() const           { return effet; }
+    bool estReduit() const          { return reduit; }
+    int getLargeur() const          { return reduit ? largeurReduite : largeur; }
 
     std::function<void()> surSupprimer;
+    std::function<void()> surMiseEnPage;       // la largeur a changé : la chaîne doit se replacer
+
+    void definirReduit (bool r)
+    {
+        reduit = r;
+        plugin->state.setProperty (idReduit(), reduit, nullptr);
+        appliquerVisibilite();
+        resized();
+        repaint();
+
+        if (surMiseEnPage)
+            surMiseEnPage();
+    }
 
     void rafraichirTout()
     {
         marche.setToggleState (plugin->isEnabled(), juce::dontSendNotification);
+
+        if (reduit)
+            return;
 
         for (auto* r : aRafraichir)
             r->rafraichir();
@@ -55,31 +108,80 @@ public:
     void paint (juce::Graphics& g) override
     {
         g.fillAll (Couleurs::panneauClair.darker (0.25f));
+        const auto teinte = couleur.withMultipliedSaturation (0.75f).darker (0.15f);
 
-        auto entete = getLocalBounds().removeFromTop (hauteurEntete);
-        g.setColour (couleur.withMultipliedSaturation (0.75f).darker (0.15f));
-        g.fillRect (entete);
+        if (reduit)
+        {
+            g.fillAll (teinte);
+            g.setColour (juce::Colours::black);
+            g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
 
-        g.setColour (juce::Colours::black);
-        g.setFont (juce::FontOptions (13.5f, juce::Font::bold));
-        g.drawText (titre, entete.withTrimmedLeft (44).withTrimmedRight (30), juce::Justification::centredLeft, true);
+            // Le titre écrit de bas en haut
+            juce::Graphics::ScopedSaveState etat (g);
+            g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi,
+                                                             (float) getWidth() * 0.5f, (float) getHeight() * 0.5f));
+            g.drawText (titre, juce::Rectangle<int> (0, 0, getHeight() - 80, getWidth())
+                                   .withCentre ({ getWidth() / 2, getHeight() / 2 + 30 }),
+                        juce::Justification::centredLeft, true);
+        }
+        else
+        {
+            auto entete = getLocalBounds().removeFromTop (hauteurEntete);
+            g.setColour (teinte);
+            g.fillRect (entete);
 
-        g.setColour (Couleurs::texteDoux);
-        g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
-        for (auto& e : etiquettes)
-            g.drawText (e.second, e.first, juce::Justification::centredLeft, false);
+            g.setColour (juce::Colours::black);
+            g.setFont (juce::FontOptions (13.5f, juce::Font::bold));
+            g.drawText (titre, entete.withTrimmedLeft (44).withTrimmedRight (56), juce::Justification::centredLeft, true);
+
+            g.setColour (Couleurs::texteDoux);
+            g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+            for (auto& e : etiquettes)
+                g.drawText (e.second, e.first, juce::Justification::centredLeft, false);
+
+            g.setColour (Couleurs::bordure);
+            for (int x : separateurs)
+                g.drawVerticalLine (x, (float) hauteurEntete + 4.0f, (float) getHeight() - 4.0f);
+        }
 
         g.setColour (Couleurs::bordure);
-        for (int x : separateurs)
-            g.drawVerticalLine (x, (float) hauteurEntete + 4.0f, (float) getHeight() - 4.0f);
-
         g.drawRect (getLocalBounds());
     }
 
     void resized() override
     {
-        marche.setBounds (4, 3, 36, hauteurEntete - 6);
-        supprimer.setBounds (getWidth() - 26, 3, 22, hauteurEntete - 6);
+        reduire.setButtonText (reduit ? "+" : "-");
+
+        if (reduit)
+        {
+            marche.setBounds (2, 3, largeurReduite - 4, 18);
+            reduire.setBounds (2, 24, largeurReduite - 4, 18);
+            supprimer.setBounds (2, 45, largeurReduite - 4, 18);
+        }
+        else
+        {
+            marche.setBounds (4, 3, 36, hauteurEntete - 6);
+            supprimer.setBounds (getWidth() - 26, 3, 22, hauteurEntete - 6);
+            reduire.setBounds (getWidth() - (effet ? 50 : 26), 3, 22, hauteurEntete - 6);
+        }
+    }
+
+    //==========================================================================
+    void mouseDoubleClick (const juce::MouseEvent& e) override
+    {
+        if (reduit || e.y < hauteurEntete)
+            definirReduit (! reduit);
+    }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        // Glisser la barre de titre d'un effet pour le déplacer dans la chaîne
+        if (! effet || e.getDistanceFromDragStart() < 6 || (! reduit && e.getMouseDownY() >= hauteurEntete))
+            return;
+
+        if (auto* conteneur = juce::DragAndDropContainer::findParentDragContainerFor (this))
+            if (! conteneur->isDragAndDropActive())
+                conteneur->startDragging ("peripherique", this);
     }
 
 protected:
@@ -87,6 +189,13 @@ protected:
     juce::String titre;
     int largeur;
     juce::Colour couleur;
+    bool effet = false, reduit = false;
+
+    static const juce::Identifier& idReduit()
+    {
+        static const juce::Identifier id ("quackReduit");
+        return id;
+    }
 
     /** Crée un composant, le garde, l'affiche et le place (y compté sous l'en-tête). */
     template <typename Type, typename... Args>
@@ -94,13 +203,25 @@ protected:
     {
         auto* c = new Type (std::forward<Args> (args)...);
         possede.add (c);
-        addAndMakeVisible (c);
+        addChildComponent (c);
         c->setBounds (place.translated (0, hauteurEntete));
+        c->setVisible (! reduit);
 
         if (auto* r = dynamic_cast<Rafraichissable*> (c))
             aRafraichir.push_back (r);
 
+        composantAjoute (*c);
         return *c;
+    }
+
+    /** Appelé à chaque composant créé (le synthé s'en sert pour ranger ses composants par page). */
+    virtual void composantAjoute (juce::Component&) {}
+
+    /** Montre ou cache le contenu selon que le périphérique est réduit ou non. */
+    virtual void appliquerVisibilite()
+    {
+        for (auto* c : possede)
+            c->setVisible (! reduit);
     }
 
     static constexpr int lp = 44, hp = 54;      // taille d'un potard
@@ -124,31 +245,47 @@ protected:
 
     void debutGeste()           { plugin->edit.getUndoManager().beginNewTransaction(); }
 
-private:
-    juce::TextButton marche, supprimer;
     juce::OwnedArray<juce::Component> possede;
+
+private:
+    juce::TextButton marche, reduire, supprimer;
     std::vector<Rafraichissable*> aRafraichir;
     std::vector<std::pair<juce::Rectangle<int>, juce::String>> etiquettes;
     std::vector<int> separateurs;
 };
 
 //==============================================================================
-/** Le synthétiseur : 4 oscillateurs, filtre, deux enveloppes, 2 LFO et des effets. */
+/** Un onglet qui s'ouvre tout seul quand on passe dessus en glissant une modulation. */
+class OngletSynthe : public juce::TextButton,
+                     public juce::DragAndDropTarget
+{
+public:
+    using juce::TextButton::TextButton;
+
+    bool isInterestedInDragSource (const SourceDetails& d) override     { return d.description.toString().startsWith ("mod:"); }
+    void itemDragEnter (const SourceDetails&) override                  { if (onClick) onClick(); }
+    void itemDropped (const SourceDetails&) override                    {}
+};
+
+//==============================================================================
+/** Le synthétiseur, en trois onglets : OSC (les 4 oscillateurs), FILTER / MOD (filtre, enveloppes, LFO)
+    et FX (effets). À gauche, toujours visibles : l'oscilloscope et les réglages généraux.
+    Le son traverse dans cet ordre : oscillateurs -> filtre -> effets. */
 class PeripheriqueSynthe : public Peripherique
 {
 public:
-    PeripheriqueSynthe (te::FourOscPlugin& s, juce::Colour c)
-        : Peripherique (s, "Quack Synth", 1390, false, c), synthe (s)
+    PeripheriqueSynthe (te::FourOscPlugin& s, std::function<void (float*, int)> lectureOscillo, juce::Colour c)
+        : Peripherique (s, "Quack Synth", 652, false, c), synthe (s)
     {
-        construireOscillateurs (8);
-        separateur (402);
-        construireFiltre (410);
-        separateur (702);
-        construireAmpli (710);
-        separateur (902);
-        construireLfos (910);
-        separateur (1118);
-        construireEffets (1126);
+        construireGauche (std::move (lectureOscillo));
+        construireOnglets();
+
+        etiquettePage = 0;   construireOscillateurs (160, 26);
+        etiquettePage = 1;   construireFiltre (160, 26);
+                             construireEnveloppes (320, 26);
+                             construireLfos (506, 26);
+        etiquettePage = 2;   construireEffets (160, 26);
+        etiquettePage = -1;
 
         // Préréglages (dans l'en-tête)
         addAndMakeVisible (presets);
@@ -171,6 +308,8 @@ public:
                      fr ("Garde tes réglages sous un nom : tu retrouveras ce son dans la liste et dans le navigateur."));
 
         remplirPresets();
+        page = juce::jlimit (0, 2, (int) synthe.state.getProperty ("quackPage", 0));
+        appliquerVisibilite();
     }
 
     /** Appelé quand l'utilisateur choisit un préréglage (identifiant du catalogue). */
@@ -179,15 +318,115 @@ public:
     void resized() override
     {
         Peripherique::resized();
-        presets.setBounds (150, 3, 190, hauteurEntete - 6);
-        enregistrer.setBounds (346, 3, 50, hauteurEntete - 6);
+        presets.setBounds (140, 3, 190, hauteurEntete - 6);
+        enregistrer.setBounds (336, 3, 50, hauteurEntete - 6);
+    }
+
+protected:
+    void composantAjoute (juce::Component& c) override
+    {
+        rangement.push_back ({ &c, etiquettePage, etiquetteEnv, etiquetteLfo });
+    }
+
+    void appliquerVisibilite() override
+    {
+        for (auto& r : rangement)
+            r.composant->setVisible (! reduit
+                                      && (r.page < 0 || r.page == page)
+                                      && (r.env < 0 || r.env == envChoisie)
+                                      && (r.lfo < 0 || r.lfo == lfoChoisi));
+
+        presets.setVisible (! reduit);
+        enregistrer.setVisible (! reduit);
+
+        for (int i = 0; i < onglets.size(); ++i)
+            onglets[i]->setToggleState (i == page, juce::dontSendNotification);
+
+        for (int i = 0; i < ongletsEnv.size(); ++i)
+            ongletsEnv[i]->setToggleState (i == envChoisie, juce::dontSendNotification);
+
+        for (int i = 0; i < ongletsLfo.size(); ++i)
+            ongletsLfo[i]->setToggleState (i == lfoChoisi, juce::dontSendNotification);
     }
 
 private:
+    struct Rangement { juce::Component* composant; int page, env, lfo; };
+
     te::FourOscPlugin& synthe;
     juce::ComboBox presets;
     juce::TextButton enregistrer;
     juce::StringArray idsPresets;
+
+    std::vector<Rangement> rangement;
+    juce::Array<juce::TextButton*> onglets, ongletsEnv, ongletsLfo;
+    int etiquettePage = -1, etiquetteEnv = -1, etiquetteLfo = -1;      // où ranger les prochains composants créés
+    int page = 0, envChoisie = 0, lfoChoisi = 0;
+
+    //==========================================================================
+    // Les sources de modulation, dans l'ordre des pastilles : LFO 1, LFO 2, ENV 2, ENV 3
+
+    static constexpr int nombreSources = 4;
+
+    static te::FourOscPlugin::ModSource sourceMoteur (int i)
+    {
+        static const te::FourOscPlugin::ModSource s[] = { te::FourOscPlugin::lfo1, te::FourOscPlugin::lfo2,
+                                                          te::FourOscPlugin::env1, te::FourOscPlugin::env2 };
+        return s[juce::jlimit (0, 3, i)];
+    }
+
+    static juce::String nomSource (int i)
+    {
+        static const char* const n[] = { "LFO 1", "LFO 2", "ENV 2", "ENV 3" };
+        return n[juce::jlimit (0, 3, i)];
+    }
+
+    static juce::Colour couleurSource (int i)
+    {
+        static const juce::Colour c[] = { juce::Colour (0xff5ab8ff), juce::Colour (0xffb08cff),
+                                          juce::Colour (0xff6fe07a), juce::Colour (0xffff8ac4) };
+        return c[juce::jlimit (0, 3, i)];
+    }
+
+    /** Un potard du synthé : on peut y glisser un LFO ou une enveloppe. */
+    Potard& potardMod (int x, int y, te::AutomatableParameter::Ptr p, const juce::String& nom, const juce::String& aide)
+    {
+        auto& pot = potard (x, y, p, nom, aide);
+
+        Potard::Modulation m;
+        m.nombreSources = nombreSources;
+        m.lire = [this, p] (int i) { return synthe.getModulationDepth (sourceMoteur (i), p); };
+        m.ecrire = [this, p] (int i, float force)
+        {
+            synthe.setModulationDepth (sourceMoteur (i), p, force);
+            noterChangement();
+        };
+        m.effacer = [this, p] (int i)
+        {
+            debutGeste();
+            synthe.clearModulation (sourceMoteur (i), p);
+            noterChangement();
+        };
+        m.couleur = [] (int i) { return couleurSource (i); };
+        m.nom = [] (int i) { return nomSource (i); };
+        m.positionVivante = [this, p]
+        {
+            const auto positions = synthe.getLiveModulationPositions (p);
+            return positions.isEmpty() ? -1.0f : positions.getFirst();
+        };
+        pot.definirModulation (std::move (m));
+        return pot;
+    }
+
+    void noterChangement()
+    {
+        static_cast<te::Plugin&> (synthe).flushPluginStateToValueTree();
+        synthe.edit.markAsChanged();
+    }
+
+    void texte (int x, int y, const juce::String& t, int w = 150)
+    {
+        ajouter<TexteSection> (juce::Rectangle<int> (x, y, w, 14), t);
+    }
 
     //==========================================================================
     void remplirPresets()
@@ -239,14 +478,64 @@ private:
     }
 
     //==========================================================================
-    void construireOscillateurs (int x0)
+    void construireGauche (std::function<void (float*, int)> lectureOscillo)
     {
-        etiquette (x0, 2, "OSCILLATORS");
+        ajouter<EcranOscillo> (juce::Rectangle<int> (6, 4, 144, 96), std::move (lectureOscillo), couleur);
 
+        int x = 8;
+        potardMod (x, 106, synthe.masterLevel, "Level", fr ("Le volume général du synthétiseur."));
+        potardMod (x += lp, 106, synthe.ampVelocity, "Vel", fr ("De combien la force de la note change son volume."));
+        potard (x += lp, 106, synthe.legato, "Glide", fr ("En mode Mono ou Legato : le temps pour glisser d'une note à la suivante."));
+
+        ajouter<ChoixListe> (juce::Rectangle<int> (8, 166, 140, 22),
+                             juce::StringArray { "Mono", "Legato", "Poly" },
+                             [this] { return synthe.voiceModeValue.get(); },
+                             [this] (int i) { debutGeste(); synthe.voiceModeValue = i; },
+                             "Voice Mode",
+                             fr ("Poly : plusieurs notes à la fois (accords). Mono : une seule note à la fois (basses, solos). "
+                                 "Legato : comme Mono, mais les notes liées ne redémarrent pas l'enveloppe."));
+
+        auto& chemin = ajouter<juce::Label> (juce::Rectangle<int> (6, 196, 146, 34));
+        chemin.setText (fr ("Trajet du son :\nOSC  >  FILTER  >  FX"), juce::dontSendNotification);
+        chemin.setFont (juce::FontOptions (11.0f));
+        chemin.setColour (juce::Label::textColourId, Couleurs::texteDoux);
+        chemin.setJustificationType (juce::Justification::centred);
+        chemin.setInterceptsMouseClicks (false, false);
+    }
+
+    void construireOnglets()
+    {
+        const char* const noms[] = { "OSC", "FILTER / MOD", "FX" };
+        const char* const aides[] = {
+            "Les 4 oscillateurs : ce sont eux qui fabriquent le son de départ.",
+            "Le filtre, qui sculpte le son, puis les enveloppes et les LFO, qui font bouger les réglages dans le temps.",
+            "Les effets du synthé, appliqués tout à la fin, après le filtre : distorsion, chorus, écho, réverbération."
+        };
+
+        for (int i = 0; i < 3; ++i)
+        {
+            auto& b = ajouter<OngletSynthe> (juce::Rectangle<int> (160 + i * 112, 2, 110, 20), noms[i]);
+            b.setWantsKeyboardFocus (false);
+            b.setClickingTogglesState (false);
+            b.setColour (juce::TextButton::buttonOnColourId, Couleurs::accent);
+            b.onClick = [this, i]
+            {
+                page = i;
+                synthe.state.setProperty ("quackPage", page, nullptr);
+                appliquerVisibilite();
+            };
+            definirAide (b, noms[i], fr (aides[i]));
+            onglets.add (&b);
+        }
+    }
+
+    //==========================================================================
+    void construireOscillateurs (int x0, int y0)
+    {
         for (int i = 0; i < 4; ++i)
         {
             auto* o = synthe.oscParams[i];
-            const int y = 18 + i * 64;
+            const int y = y0 + i * 61;
             const juce::String n (i + 1);
 
             ajouter<EcranOnde> (juce::Rectangle<int> (x0, y + 2, 72, 50),
@@ -255,10 +544,10 @@ private:
                                 couleur);
 
             int x = x0 + 78;
-            potard (x, y, o->tune, "Tune", fr ("La hauteur de l'oscillateur ") + n + fr (", en demi-tons. +12 = une octave plus haut, -12 = une octave plus bas."));
-            potard (x += lp, y, o->fineTune, "Fine", fr ("Accordage très fin. Un tout petit décalage entre deux oscillateurs donne un son plus large."));
-            potard (x += lp, y, o->level, "Level", fr ("Le volume de l'oscillateur ") + n + ".");
-            potard (x += lp, y, o->pulseWidth, "Width", fr ("Pour l'onde Square seulement : la largeur du carré. Au milieu : son creux. Sur les côtés : son plus nasillard."));
+            potardMod (x, y, o->tune, "Tune", fr ("La hauteur de l'oscillateur ") + n + fr (", en demi-tons. +12 = une octave plus haut, -12 = une octave plus bas."));
+            potardMod (x += lp, y, o->fineTune, "Fine", fr ("Accordage très fin. Un tout petit décalage entre deux oscillateurs donne un son plus large. Avec un LFO dessus : vibrato."));
+            potardMod (x += lp, y, o->level, "Level", fr ("Le volume de l'oscillateur ") + n + ".");
+            potardMod (x += lp, y, o->pulseWidth, "Width", fr ("Pour l'onde Square seulement : la largeur du carré. Au milieu : son creux. Sur les côtés : son plus nasillard."));
 
             Potard::Lien voix;
             voix.plage = juce::NormalisableRange<double> (1.0, 8.0, 1.0);
@@ -270,8 +559,9 @@ private:
             voix.aUnDefaut = true;
             potardLibre (x += lp, y, "Voices", voix, fr ("Nombre de copies de l'oscillateur jouées ensemble (unisson). Plusieurs voix + Detune = un son épais."));
 
-            potard (x += lp, y, o->detune, "Detune", fr ("Désaccorde légèrement les voix entre elles. Ne s'entend qu'avec 2 voix ou plus."));
-            potard (x += lp, y, o->spread, "Spread", fr ("Répartit les voix entre la gauche et la droite."));
+            potardMod (x += lp, y, o->detune, "Detune", fr ("Désaccorde légèrement les voix entre elles. Ne s'entend qu'avec 2 voix ou plus."));
+            potardMod (x += lp, y, o->spread, "Spread", fr ("Répartit les voix entre la gauche et la droite."));
+            potardMod (x += lp, y, o->pan, "Pan", fr ("Place cet oscillateur plus à gauche ou plus à droite."));
         }
     }
 
@@ -288,11 +578,11 @@ private:
     static float noteVersHz (float note)        { return 440.0f * std::pow (2.0f, (note - 69.0f) / 12.0f); }
     static float hzVersNote (float hz)          { return 69.0f + 12.0f * std::log2 (juce::jmax (1.0f, hz) / 440.0f); }
 
-    void construireFiltre (int x0)
+    void construireFiltre (int x0, int y0)
     {
-        etiquette (x0, 2, "FILTER");
+        texte (x0, y0, "FILTER");
 
-        auto& ecran = ajouter<EcranCourbe> (juce::Rectangle<int> (x0, 18, 284, 74), -36.0f, 24.0f, couleur);
+        auto& ecran = ajouter<EcranCourbe> (juce::Rectangle<int> (x0, y0 + 16, 152, 84), -36.0f, 24.0f, couleur);
         ecran.tracerZero = false;
         ecran.debutGeste = [this] { debutGeste(); };
         ecran.courbe = [this] (float hz)
@@ -332,10 +622,11 @@ private:
         };
         ecran.points.push_back (pt);
         definirAide (ecran, "Filter",
-                     fr ("Le filtre enlève une partie du son. La courbe montre ce qui passe : à gauche les graves, à droite "
-                         "les aigus. Tire le point : gauche/droite pour la fréquence de coupure, haut/bas pour la résonance."));
+                     fr ("Le filtre enlève une partie du son, juste après les oscillateurs et avant les effets. La courbe montre "
+                         "ce qui passe : à gauche les graves, à droite les aigus. Tire le point : gauche/droite pour la "
+                         "fréquence de coupure, haut/bas pour la résonance."));
 
-        ajouter<ChoixListe> (juce::Rectangle<int> (x0, 96, 136, 22),
+        ajouter<ChoixListe> (juce::Rectangle<int> (x0, y0 + 104, 90, 22),
                              juce::StringArray { "Off", "Lowpass", "Highpass", "Bandpass", "Notch" },
                              [this] { return synthe.filterTypeValue.get(); },
                              [this] (int i) { debutGeste(); synthe.filterTypeValue = i; },
@@ -343,193 +634,160 @@ private:
                              fr ("Lowpass : garde les graves, coupe les aigus (le plus utilisé). Highpass : l'inverse. "
                                  "Bandpass : ne garde qu'une bande au milieu. Notch : creuse un trou. Off : pas de filtre."));
 
-        ajouter<ChoixListe> (juce::Rectangle<int> (x0 + 142, 96, 90, 22),
+        ajouter<ChoixListe> (juce::Rectangle<int> (x0 + 94, y0 + 104, 58, 22),
                              juce::StringArray { "12 dB", "24 dB" },
                              [this] { return synthe.filterSlopeValue.get() == 24 ? 1 : 0; },
                              [this] (int i) { debutGeste(); synthe.filterSlopeValue = (i == 1 ? 24 : 12); },
                              "Filter Slope",
                              fr ("La pente du filtre : 24 dB coupe plus franchement que 12 dB."));
 
-        int x = x0 + 4;
-        const int y = 122;
-        potard (x, y, synthe.filterFreq, "Freq", fr ("La fréquence de coupure : là où le filtre commence à couper."));
-        potard (x += lp, y, synthe.filterResonance, "Res", fr ("La résonance : fait ressortir (« siffler ») le son juste à la fréquence de coupure."));
-        potard (x += lp, y, synthe.filterAmount, "Env", fr ("De combien l'enveloppe du filtre (juste en dessous) ouvre ou ferme le filtre à chaque note."));
+        int x = x0 + 10;
+        const int y = y0 + 132;
+        potardMod (x, y, synthe.filterFreq, "Freq", fr ("La fréquence de coupure : là où le filtre commence à couper. Glisse ENV 2 dessus pour que le filtre s'ouvre à chaque note, ou un LFO pour un effet wah-wah."));
+        potardMod (x += lp, y, synthe.filterResonance, "Res", fr ("La résonance : fait ressortir (« siffler ») le son juste à la fréquence de coupure."));
         potard (x += lp, y, synthe.filterKey, "Key", fr ("Fait suivre le filtre avec la hauteur de la note : les notes aiguës sont alors plus brillantes."));
-        potard (x += lp, y, synthe.filterVelocity, "Vel", fr ("Les notes jouées fort ouvrent davantage le filtre."));
-
-        etiquette (x0, 176, "FILTER ENVELOPE");
-        ajouter<EcranEnveloppe> (juce::Rectangle<int> (x0, 192, 104, 76),
-                                 synthe.filterAttack, synthe.filterDecay, synthe.filterSustain, synthe.filterRelease,
-                                 couleur, "Filter Envelope");
-
-        x = x0 + 108;
-        potard (x, 202, synthe.filterAttack, "Attack", fr ("Le temps que met le filtre à s'ouvrir au début de la note."));
-        potard (x += lp, 202, synthe.filterDecay, "Decay", fr ("Le temps que met le filtre à se refermer jusqu'au niveau Sustain."));
-        potard (x += lp, 202, synthe.filterSustain, "Sustain", fr ("L'ouverture du filtre tant que la note reste tenue."));
-        potard (x += lp, 202, synthe.filterRelease, "Release", fr ("Le temps que met le filtre à se refermer quand la note s'arrête."));
     }
 
     //==========================================================================
-    void construireAmpli (int x0)
+    void construireEnveloppes (int x0, int y0)
     {
-        etiquette (x0, 2, "AMP ENVELOPE");
+        const char* const noms[] = { "ENV 1", "ENV 2", "ENV 3" };
 
-        ajouter<EcranEnveloppe> (juce::Rectangle<int> (x0, 18, 184, 100),
-                                 synthe.ampAttack, synthe.ampDecay, synthe.ampSustain, synthe.ampRelease,
-                                 Couleurs::accent, "Amp Envelope");
-
-        int x = x0 + 4;
-        potard (x, 122, synthe.ampAttack, "Attack", fr ("Le temps que met le son pour arriver à son maximum. Court : son qui claque. Long : son qui gonfle doucement."));
-        potard (x += lp, 122, synthe.ampDecay, "Decay", fr ("Le temps pour redescendre du maximum jusqu'au niveau Sustain."));
-        potard (x += lp, 122, synthe.ampSustain, "Sustain", fr ("Le niveau du son tant que la note reste tenue. À zéro, le son s'éteint tout seul (piano, cloche)."));
-        potard (x += lp, 122, synthe.ampRelease, "Release", fr ("Le temps que met le son à s'éteindre quand la note s'arrête."));
-
-        etiquette (x0, 180, "GLOBAL");
-        x = x0 + 4;
-        potard (x, 196, synthe.ampVelocity, "Vel", fr ("De combien la force de la note change son volume."));
-        potard (x += lp, 196, synthe.masterLevel, "Level", fr ("Le volume général du synthétiseur."));
-        potard (x += lp, 196, synthe.legato, "Glide", fr ("En mode Mono ou Legato : le temps pour glisser d'une note à la suivante."));
-
-        ajouter<ChoixListe> (juce::Rectangle<int> (x0 + 4 + lp * 3 + 2, 208, 54, 22),
-                             juce::StringArray { "Mono", "Legato", "Poly" },
-                             [this] { return synthe.voiceModeValue.get(); },
-                             [this] (int i) { debutGeste(); synthe.voiceModeValue = i; },
-                             "Voice Mode",
-                             fr ("Poly : plusieurs notes à la fois (accords). Mono : une seule note à la fois (basses, solos). "
-                                 "Legato : comme Mono, mais les notes liées ne redémarrent pas l'enveloppe."));
-    }
-
-    //==========================================================================
-    juce::Array<te::AutomatableParameter::Ptr> ciblesLfo (int destination)
-    {
-        juce::Array<te::AutomatableParameter::Ptr> cibles;
-
-        switch (destination)
+        for (int i = 0; i < 3; ++i)
         {
-            case 1:  for (auto* o : synthe.oscParams) cibles.add (o->fineTune);     break;     // Pitch
-            case 2:  cibles.add (synthe.filterFreq);                                break;     // Filter
-            case 3:  for (auto* o : synthe.oscParams) cibles.add (o->level);        break;     // Volume
-            case 4:  for (auto* o : synthe.oscParams) cibles.add (o->pulseWidth);   break;     // Pulse width
-            case 5:  for (auto* o : synthe.oscParams) cibles.add (o->pan);          break;     // Pan
-            default: break;
+            auto& b = ajouter<juce::TextButton> (juce::Rectangle<int> (x0 + i * 60, y0, 58, 18), noms[i]);
+            b.setWantsKeyboardFocus (false);
+            b.setColour (juce::TextButton::buttonOnColourId, i == 0 ? Couleurs::accent : couleurSource (i + 1));
+            b.onClick = [this, i] { envChoisie = i; appliquerVisibilite(); };
+            definirAide (b, noms[i],
+                         i == 0 ? fr ("ENV 1 est l'enveloppe du volume : elle dessine la vie de chaque note (comment elle démarre, tient et s'éteint).")
+                                : fr ("Une enveloppe libre : elle ne fait rien tant que tu ne l'as pas glissée sur un potard. "
+                                      "Glissée sur Freq du filtre, elle ouvre et referme le filtre à chaque note."));
+            ongletsEnv.add (&b);
         }
 
-        return cibles;
+        for (int i = 0; i < 3; ++i)
+        {
+            etiquetteEnv = i;
+
+            te::AutomatableParameter::Ptr a, d, s, r;
+            if (i == 0)
+            {
+                a = synthe.ampAttack;  d = synthe.ampDecay;  s = synthe.ampSustain;  r = synthe.ampRelease;
+            }
+            else
+            {
+                auto* m = synthe.modEnvParams[i - 1];
+                a = m->modAttack;  d = m->modDecay;  s = m->modSustain;  r = m->modRelease;
+            }
+
+            const auto teinte = i == 0 ? Couleurs::accent : couleurSource (i + 1);
+            ajouter<EcranEnveloppe> (juce::Rectangle<int> (x0, y0 + 22, 178, 84), a, d, s, r, teinte, noms[i]);
+
+            int x = x0 + 1;
+            const int y = y0 + 110;
+            potard (x, y, a, "Attack", fr ("Le temps pour arriver au maximum. Court : ça claque. Long : ça gonfle doucement."));
+            potard (x += lp, y, d, "Decay", fr ("Le temps pour redescendre du maximum jusqu'au niveau Sustain."));
+            potard (x += lp, y, s, "Sustain", fr ("Le niveau tant que la note reste tenue. À zéro, ça s'éteint tout seul (piano, cloche)."));
+            potard (x += lp, y, r, "Release", fr ("Le temps pour s'éteindre quand la note s'arrête."));
+
+            if (i == 0)
+            {
+                auto& info = ajouter<juce::Label> (juce::Rectangle<int> (x0, y0 + 170, 178, 34));
+                info.setText (fr ("ENV 1 règle toujours le volume de la note."), juce::dontSendNotification);
+                info.setFont (juce::FontOptions (11.0f));
+                info.setColour (juce::Label::textColourId, Couleurs::texteDoux);
+                info.setJustificationType (juce::Justification::centred);
+                info.setInterceptsMouseClicks (false, false);
+            }
+            else
+            {
+                ajouter<PoigneeModulation> (juce::Rectangle<int> (x0, y0 + 174, 178, 24), i + 1, noms[i], teinte);
+            }
+        }
+
+        etiquetteEnv = -1;
     }
 
-    int destinationLfo (te::FourOscPlugin::ModSource source)
+    //==========================================================================
+    void construireLfos (int x0, int y0)
     {
-        for (int d = 1; d <= 5; ++d)
-            if (synthe.getModulationDepth (source, ciblesLfo (d).getFirst()) >= -1.0f)
-                return d;
-        return 0;
-    }
+        const char* const noms[] = { "LFO 1", "LFO 2" };
 
-    float quantiteLfo (te::FourOscPlugin::ModSource source)
-    {
-        const int d = destinationLfo (source);
-        return d == 0 ? 0.0f : juce::jmax (0.0f, synthe.getModulationDepth (source, ciblesLfo (d).getFirst()));
-    }
-
-    void reglerLfo (te::FourOscPlugin::ModSource source, int destination, float quantite)
-    {
-        for (int d = 1; d <= 5; ++d)
-            for (auto& p : ciblesLfo (d))
-                synthe.clearModulation (source, p);
-
-        for (auto& p : ciblesLfo (destination))
-            synthe.setModulationDepth (source, p, quantite);
-
-        static_cast<te::Plugin&> (synthe).flushPluginStateToValueTree();
-        synthe.edit.markAsChanged();
-    }
-
-    void construireLfos (int x0)
-    {
         for (int i = 0; i < 2; ++i)
         {
+            auto& b = ajouter<juce::TextButton> (juce::Rectangle<int> (x0 + i * 70, y0, 68, 18), noms[i]);
+            b.setWantsKeyboardFocus (false);
+            b.setColour (juce::TextButton::buttonOnColourId, couleurSource (i));
+            b.onClick = [this, i] { lfoChoisi = i; appliquerVisibilite(); };
+            definirAide (b, noms[i],
+                         fr ("Un LFO fait bouger un réglage tout seul, en boucle. Il ne fait rien tant que tu ne l'as pas "
+                             "glissé sur un potard avec la poignée du bas."));
+            ongletsLfo.add (&b);
+        }
+
+        for (int i = 0; i < 2; ++i)
+        {
+            etiquetteLfo = i;
             auto* l = synthe.lfoParams[i];
-            const auto source = i == 0 ? te::FourOscPlugin::lfo1 : te::FourOscPlugin::lfo2;
-            const int y = i * 136;
+            const auto teinte = couleurSource (i);
 
-            etiquette (x0, y + 2, "LFO " + juce::String (i + 1));
+            ajouter<EcranLfo> (juce::Rectangle<int> (x0, y0 + 22, 138, 62),
+                               [l] { return l->waveShapeValue.get(); },
+                               [l] { return l->rate->getCurrentValue(); },
+                               teinte);
 
-            ajouter<ChoixListe> (juce::Rectangle<int> (x0, y + 20, 98, 22),
+            ajouter<ChoixListe> (juce::Rectangle<int> (x0, y0 + 88, 138, 20),
                                  juce::StringArray { "Off", "Sine", "Triangle", "Saw Up", "Saw Down", "Square", "Random" },
                                  [l] { return l->waveShapeValue.get(); },
                                  [this, l] (int f) { debutGeste(); l->waveShapeValue = f; },
                                  "LFO Wave",
-                                 fr ("Un LFO est un oscillateur très lent : on ne l'entend pas, il fait bouger un autre réglage "
-                                     "tout seul (vibrato, wah-wah, trémolo...). Ici, la forme de ce mouvement."));
+                                 fr ("La forme du mouvement du LFO. Sine : va-et-vient doux. Square : saute entre deux valeurs. "
+                                     "Saw : monte (ou descend) puis recommence. Random : valeurs au hasard."));
 
-            ajouter<ChoixListe> (juce::Rectangle<int> (x0 + 102, y + 20, 98, 22),
-                                 juce::StringArray { fr ("-> Rien"), "-> Pitch", "-> Filter", "-> Volume", "-> Width", "-> Pan" },
-                                 [this, source] { return destinationLfo (source); },
-                                 [this, source] (int d)
-                                 {
-                                     const float q = quantiteLfo (source);
-                                     reglerLfo (source, d, q > 0.001f ? q : 0.3f);
-                                 },
-                                 "LFO Destination",
-                                 fr ("Ce que le LFO fait bouger. Pitch : la hauteur (vibrato). Filter : le filtre (wah-wah). "
-                                     "Volume : le niveau (trémolo). Width : la largeur de l'onde carrée. Pan : gauche/droite."));
+            potardMod (x0, y0 + 112, l->rate, "Rate", fr ("La vitesse du LFO, en battements par seconde (Hz)."));
+            potardMod (x0 + lp, y0 + 112, l->depth, "Depth", fr ("L'amplitude générale du LFO."));
 
-            potard (x0 + 4, y + 48, l->rate, "Rate", fr ("La vitesse du LFO, en battements par seconde (Hz)."));
-
-            Potard::Lien quantite;
-            quantite.plage = juce::NormalisableRange<double> (0.0, 1.0);
-            quantite.lire = [this, source] { return quantiteLfo (source); };
-            quantite.ecrire = [this, source] (float v)
-            {
-                const int d = destinationLfo (source);
-                if (d != 0)
-                    reglerLfo (source, d, v);
-            };
-            quantite.texte = [] (float v) { return juce::String (juce::roundToInt (v * 100.0f)) + " %"; };
-            potardLibre (x0 + 4 + lp, y + 48, "Amount", quantite,
-                         fr ("La force du mouvement. Choisis d'abord une destination dans la liste au-dessus."));
-
-            potard (x0 + 4 + lp * 2, y + 48, l->depth, "Depth", fr ("L'amplitude du LFO lui-même."));
-
-            ajouter<Interrupteur> (juce::Rectangle<int> (x0 + 4 + lp * 3 + 6, y + 60, 52, 22), "Sync",
+            ajouter<Interrupteur> (juce::Rectangle<int> (x0 + lp * 2 + 4, y0 + 126, 46, 22), "Sync",
                                    [l] { return l->syncValue.get(); },
-                                   [this, l] (bool b) { debutGeste(); l->syncValue = b; },
+                                   [this, l] (bool etat) { debutGeste(); l->syncValue = etat; },
                                    "LFO Sync",
                                    fr ("Cale la vitesse du LFO sur le tempo du morceau au lieu du bouton Rate."));
+
+            ajouter<PoigneeModulation> (juce::Rectangle<int> (x0, y0 + 174, 138, 24), i, noms[i], teinte);
         }
+
+        etiquetteLfo = -1;
     }
 
     //==========================================================================
-    void construireEffets (int x0)
+    void construireEffets (int x0, int y0)
     {
-        etiquette (x0, 2, "EFFECTS");
-
-        auto ligne = [this, x0] (int numero, const juce::String& nom, juce::CachedValue<bool>& actif, const juce::String& aide)
+        auto ligne = [this, x0, y0] (int numero, const juce::String& nom, juce::CachedValue<bool>& actif, const juce::String& aide)
         {
-            const int y = 18 + numero * 64;
+            const int y = y0 + numero * 61;
             auto* a = &actif;
-            ajouter<Interrupteur> (juce::Rectangle<int> (x0, y + 14, 74, 24), nom,
+            ajouter<Interrupteur> (juce::Rectangle<int> (x0, y + 14, 80, 24), nom,
                                    [a] { return a->get(); },
-                                   [this, a] (bool b) { debutGeste(); *a = b; },
+                                   [this, a] (bool etat) { debutGeste(); *a = etat; },
                                    nom, aide);
             return y;
         };
 
-        int y = ligne (0, "Distortion", synthe.distortionOnValue, fr ("Salit le son du synthé. Clique pour l'allumer."));
-        potard (x0 + 80, y, synthe.distortion, "Amount", fr ("La quantité de distorsion."));
+        int y = ligne (0, "Distortion", synthe.distortionOnValue, fr ("Salit le son du synthé, après le filtre. Clique pour l'allumer."));
+        potardMod (x0 + 90, y, synthe.distortion, "Amount", fr ("La quantité de distorsion."));
 
         y = ligne (1, "Chorus", synthe.chorusOnValue, fr ("Épaissit le son, comme si plusieurs instruments jouaient ensemble."));
-        int x = x0 + 80;
-        potard (x, y, synthe.chorusMix, "Mix", fr ("Le dosage entre le son normal et le son avec chorus."));
-        potard (x += lp, y, synthe.chorusSpeed, "Speed", fr ("La vitesse du mouvement du chorus."));
-        potard (x += lp, y, synthe.chorusDepth, "Depth", fr ("La profondeur du mouvement du chorus."));
-        potard (x += lp, y, synthe.chorusWidth, "Width", fr ("La largeur stéréo du chorus."));
+        int x = x0 + 90;
+        potardMod (x, y, synthe.chorusMix, "Mix", fr ("Le dosage entre le son normal et le son avec chorus."));
+        potardMod (x += lp, y, synthe.chorusSpeed, "Speed", fr ("La vitesse du mouvement du chorus."));
+        potardMod (x += lp, y, synthe.chorusDepth, "Depth", fr ("La profondeur du mouvement du chorus."));
+        potardMod (x += lp, y, synthe.chorusWidth, "Width", fr ("La largeur stéréo du chorus."));
 
         y = ligne (2, "Delay", synthe.delayOnValue, fr ("Un écho : le son se répète, de moins en moins fort."));
-        x = x0 + 80;
-        potard (x, y, synthe.delayMix, "Mix", fr ("Le dosage entre le son normal et l'écho."));
-        potard (x += lp, y, synthe.delayFeedback, "Feedb", fr ("Feedback : combien de fois l'écho se répète."));
+        x = x0 + 90;
+        potardMod (x, y, synthe.delayMix, "Mix", fr ("Le dosage entre le son normal et l'écho."));
+        potardMod (x += lp, y, synthe.delayFeedback, "Feedb", fr ("Feedback : combien de fois l'écho se répète."));
 
         Potard::Lien temps;
         temps.plage = juce::NormalisableRange<double> (0.25, 4.0, 0.25);
@@ -540,14 +798,14 @@ private:
         temps.defaut = 1.0;
         temps.aUnDefaut = true;
         potardLibre (x += lp, y, "Time", temps, fr ("L'écart entre deux répétitions, en temps (calé sur le tempo). 0,5 = une croche."));
-        potard (x += lp, y, synthe.delayCrossfeed, "Cross", fr ("Fait rebondir l'écho entre la gauche et la droite."));
+        potardMod (x += lp, y, synthe.delayCrossfeed, "Cross", fr ("Fait rebondir l'écho entre la gauche et la droite."));
 
         y = ligne (3, "Reverb", synthe.reverbOnValue, fr ("Donne l'impression de jouer dans une grande salle."));
-        x = x0 + 80;
-        potard (x, y, synthe.reverbMix, "Mix", fr ("Le dosage entre le son normal et la réverbération."));
-        potard (x += lp, y, synthe.reverbSize, "Size", fr ("La taille de la salle : petite pièce ou cathédrale."));
-        potard (x += lp, y, synthe.reverbDamping, "Damp", fr ("Étouffe les aigus de la réverbération, comme une salle avec des rideaux."));
-        potard (x += lp, y, synthe.reverbWidth, "Width", fr ("La largeur stéréo de la réverbération."));
+        x = x0 + 90;
+        potardMod (x, y, synthe.reverbMix, "Mix", fr ("Le dosage entre le son normal et la réverbération."));
+        potardMod (x += lp, y, synthe.reverbSize, "Size", fr ("La taille de la salle : petite pièce ou cathédrale."));
+        potardMod (x += lp, y, synthe.reverbDamping, "Damp", fr ("Étouffe les aigus de la réverbération, comme une salle avec des rideaux."));
+        potardMod (x += lp, y, synthe.reverbWidth, "Width", fr ("La largeur stéréo de la réverbération."));
     }
 };
 
@@ -849,7 +1107,9 @@ public:
 };
 
 //==============================================================================
-/** La chaîne de périphériques de la piste choisie : instrument, puis effets, de gauche à droite. */
+/** La chaîne de périphériques de la piste choisie : instrument, puis effets, de gauche à droite.
+    On peut y glisser un effet ou un instrument depuis le navigateur, à l'endroit précis voulu,
+    et déplacer un effet en glissant sa barre de titre. */
 class ChainePeripheriques : public juce::Component,
                             public juce::DragAndDropTarget,
                             private juce::Timer
@@ -869,9 +1129,12 @@ public:
         definirAide (ajouterEffet, fr ("Ajouter un effet"),
                      fr ("Ajoute un effet à la fin de la chaîne. Le son traverse les périphériques de gauche à droite."));
 
+        contenu.addChildComponent (marqueur);
+        marqueur.setInterceptsMouseClicks (false, false);
+
         definirAide (*this, fr ("Instrument et effets"),
                      fr ("L'instrument de la piste choisie, suivi de ses effets. Le son va de gauche à droite. "
-                         "Tu peux glisser ici un instrument ou un effet depuis le navigateur."));
+                         "Glisse ici un instrument ou un effet depuis le navigateur : un trait blanc montre où il se posera."));
 
         startTimerHz (12);
     }
@@ -895,13 +1158,49 @@ public:
     bool isInterestedInDragSource (const SourceDetails& d) override
     {
         const auto id = d.description.toString();
-        return id.startsWith ("fx:") || id.startsWith ("inst:") || id.startsWith ("preset:");
+        return id.startsWith ("fx:") || id.startsWith ("inst:") || id.startsWith ("preset:") || id == "peripherique";
     }
+
+    void itemDragMove (const SourceDetails& d) override
+    {
+        const auto id = d.description.toString();
+
+        if (id.startsWith ("fx:") || id == "peripherique")
+        {
+            const int position = positionPour (d.localPosition.x);
+            marqueur.setBounds (xDePosition (position) - 3, 4, 4, Peripherique::hauteurTotale);
+            marqueur.setVisible (true);
+            marqueur.toFront (false);
+        }
+    }
+
+    void itemDragExit (const SourceDetails&) override    { marqueur.setVisible (false); }
 
     void itemDropped (const SourceDetails& d) override
     {
-        if (auto* piste = selection.pisteValide())
-            appliquerElement (*piste, d.description.toString());
+        marqueur.setVisible (false);
+
+        auto* piste = selection.pisteValide();
+        if (piste == nullptr)
+            return;
+
+        const auto id = d.description.toString();
+        const int position = positionPour (d.localPosition.x);
+        edit.getUndoManager().beginNewTransaction();
+
+        if (id == "peripherique")
+        {
+            if (auto* source = dynamic_cast<Peripherique*> (d.sourceComponent.get()))
+                Effets::deplacer (*piste, source->getPlugin(), position);
+        }
+        else if (id.startsWith ("fx:"))
+        {
+            Effets::ajouter (*piste, id, position);
+        }
+        else
+        {
+            Instruments::appliquer (*piste, id);
+        }
     }
 
     /** Applique un élément du navigateur (instrument ou effet) à une piste. */
@@ -916,6 +1215,11 @@ public:
     }
 
 private:
+    struct Marqueur : public juce::Component
+    {
+        void paint (juce::Graphics& g) override     { g.fillAll (juce::Colours::white); }
+    };
+
     te::Edit& edit;
     Selection& selection;
 
@@ -923,13 +1227,46 @@ private:
     juce::Component contenu;
     juce::OwnedArray<Peripherique> peripheriques;
     juce::TextButton ajouterEffet;
+    Marqueur marqueur;
 
     te::AudioTrack::Ptr pisteAffichee;
     juce::Array<te::Plugin*> chaineAffichee;
 
     //==========================================================================
+    /** À quelle position de la chaîne correspond ce point (x mesuré dans la zone visible) ? */
+    int positionPour (int xVisible) const
+    {
+        const int x = xVisible + vue.getViewPositionX();
+
+        for (int i = 0; i < peripheriques.size(); ++i)
+            if (x < peripheriques[i]->getBounds().getCentreX())
+                return juce::jmax (premierePositionEffet(), i);
+
+        return peripheriques.size();
+    }
+
+    int premierePositionEffet() const
+    {
+        for (int i = 0; i < peripheriques.size(); ++i)
+            if (peripheriques[i]->estEffet())
+                return i;
+
+        return peripheriques.size();
+    }
+
+    int xDePosition (int position) const
+    {
+        if (position < peripheriques.size())
+            return peripheriques[position]->getX() - 2;
+
+        return peripheriques.isEmpty() ? 6 : peripheriques.getLast()->getRight() + 5;
+    }
+
     void timerCallback() override
     {
+        if (edit.isRendering())     // pendant un export, on ne touche pas aux instruments
+            return;
+
         auto* piste = selection.pisteValide();
         const auto chaine = piste != nullptr ? Effets::chaineDe (*piste) : juce::Array<te::Plugin*>();
 
@@ -947,6 +1284,9 @@ private:
 
     void reconstruire (te::AudioTrack* piste, const juce::Array<te::Plugin*>& chaine)
     {
+        const bool memePiste = (piste == pisteAffichee.get());
+        const auto vuePrecedente = vue.getViewPosition();
+
         peripheriques.clear();
         pisteAffichee = piste;
         chaineAffichee = chaine;
@@ -962,7 +1302,18 @@ private:
 
                 if (auto* synthe = dynamic_cast<te::FourOscPlugin*> (plugin))
                 {
-                    auto* s = new PeripheriqueSynthe (*synthe, couleur);
+                    // L'oscilloscope est un petit module placé juste après le synthé
+                    te::Plugin::Ptr oscillo (Effets::oscilloDe (*piste, true));
+
+                    auto* s = new PeripheriqueSynthe (*synthe,
+                                                      [oscillo] (float* destination, int nombre)
+                                                      {
+                                                          if (auto* o = dynamic_cast<OscilloQuack*> (oscillo.get()))
+                                                              o->lire (destination, nombre);
+                                                          else
+                                                              juce::FloatVectorOperations::clear (destination, nombre);
+                                                      },
+                                                      couleur);
                     s->surPreset = [this] (juce::String id) { differer ([id] (te::AudioTrack& t) { Instruments::appliquer (t, id); }); };
                     p = s;
                 }
@@ -982,13 +1333,25 @@ private:
                 {
                     differer ([garde] (te::AudioTrack&) { garde->deleteFromParent(); });
                 };
+                p->surMiseEnPage = [this] { placer(); };
 
                 peripheriques.add (p);
                 contenu.addAndMakeVisible (p);
             }
+
+            // L'ajout de l'oscilloscope a pu modifier la liste : on la relit pour ne pas reconstruire en boucle
+            chaineAffichee = Effets::chaineDe (*piste);
         }
 
-        // Mise en place, de gauche à droite
+        ajouterEffet.setVisible (piste != nullptr);
+        placer();
+        vue.setViewPosition (memePiste ? vuePrecedente : juce::Point<int>());
+        repaint();
+    }
+
+    /** Range les périphériques de gauche à droite. */
+    void placer()
+    {
         int x = 6;
         for (auto* p : peripheriques)
         {
@@ -996,11 +1359,8 @@ private:
             x += p->getLargeur() + 8;
         }
 
-        ajouterEffet.setVisible (piste != nullptr);
         ajouterEffet.setBounds (x, 4, 84, 28);
         contenu.setSize (x + 96, Peripherique::hauteurTotale + 8);
-        vue.setViewPosition (0, 0);
-        repaint();
     }
 
     /** Lance une action sur la piste un peu plus tard (pour ne pas détruire un bouton pendant son clic). */

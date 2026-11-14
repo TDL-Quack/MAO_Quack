@@ -248,3 +248,34 @@ namespace Reglages
         fichierFavoris().replaceWithText (f.joinIntoString ("\n"));
     }
 }
+
+//==============================================================================
+/** Journal : un fichier texte où le logiciel note ce qu'il fait d'important et ses erreurs.
+    Il sert à comprendre un plantage après coup (menu Aide > Ouvrir le journal). */
+namespace Journal
+{
+    inline juce::File fichier()     { return Reglages::dossierDonnees().getChildFile ("journal.txt"); }
+
+    inline void ecrire (const juce::String& ligne)
+    {
+        auto f = fichier();
+
+        if (f.getSize() > 512 * 1024)       // on repart de zéro quand il devient trop gros
+            f.deleteFile();
+
+        f.appendText (juce::Time::getCurrentTime().toString (true, true, true, true) + "  " + ligne + "\r\n",
+                      false, false, "\r\n");
+    }
+
+    inline void gestionnaireDePlantage (void*)
+    {
+        ecrire ("*** PLANTAGE ***");
+        ecrire (juce::SystemStats::getStackBacktrace());
+    }
+
+    inline void demarrer (const juce::String& version)
+    {
+        ecrire ("=== Demarrage de MAO Quack " + version + " - " + juce::SystemStats::getOperatingSystemName() + " ===");
+        juce::SystemStats::setApplicationCrashHandler (gestionnaireDePlantage);
+    }
+}

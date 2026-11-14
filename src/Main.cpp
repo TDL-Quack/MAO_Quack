@@ -68,7 +68,8 @@ static std::unique_ptr<te::Edit> creerNouveauMorceau (te::Engine& e)
 //==============================================================================
 /** Tout le contenu de la fenêtre, pour un morceau donné. */
 class ComposantPrincipal : public juce::Component,
-                           public juce::DragAndDropContainer
+                           public juce::DragAndDropContainer,
+                           public juce::MenuBarModel
 {
 public:
     ComposantPrincipal (te::Engine& e, std::unique_ptr<te::Edit> morceau, const juce::File& fichierDuMorceau)
@@ -80,6 +81,7 @@ public:
           arrangement (*edit, selection),
           bas (*edit, selection)
     {
+        addAndMakeVisible (barreMenus);
         addAndMakeVisible (transport);
         addAndMakeVisible (navigateur);
         addAndMakeVisible (arrangement);
@@ -94,10 +96,6 @@ public:
                 bas.montrer (1);
             }
         };
-
-        transport.surReglagesAudio = [this] { ouvrirReglagesAudio(); };
-        transport.surFichier = [this] { menuFichier(); };
-        transport.definirTitre (nomDuMorceau());
 
         edit->getTransport().ensureContextAllocated();
 
@@ -158,7 +156,8 @@ public:
     {
         auto r = getLocalBounds();
 
-        transport.setBounds (r.removeFromTop (46));
+        barreMenus.setBounds (r.removeFromTop (24));
+        transport.setBounds (r.removeFromTop (38));
 
         auto zoneBas = r.removeFromBottom (juce::jlimit (260, 346, (int) (getHeight() * 0.44)));
         aide.setBounds (zoneBas.removeFromLeft (230));
@@ -224,6 +223,7 @@ private:
     juce::File fichier;
     Selection selection;
 
+    juce::MenuBarComponent barreMenus { this };
     BarreTransport transport;
     Navigateur navigateur;
     VueArrangement arrangement;
@@ -240,35 +240,147 @@ private:
         return d;
     }
 
-    void menuFichier()
+public:
+    //==========================================================================
+    // La barre de menus
+
+    enum Commande
+    {
+        cmdNouveau = 1, cmdOuvrir, cmdEnregistrer, cmdEnregistrerSous, cmdExporter, cmdQuitter,
+        cmdAnnuler = 20, cmdRetablir, cmdDupliquerClip, cmdSupprimerClip, cmdCopierClip, cmdCollerClip,
+        cmdVoirNotes = 30, cmdVoirInstrument,
+        cmdReglagesAudio = 40,
+        cmdRaccourcis = 50, cmdJournal, cmdAPropos
+    };
+
+    juce::StringArray getMenuBarNames() override
+    {
+        return { "Fichier", fr ("Édition"), "Affichage", "Options", "Aide" };
+    }
+
+    juce::PopupMenu getMenuForIndex (int index, const juce::String&) override
     {
         juce::PopupMenu m;
-        m.addItem (1, fr ("Nouveau morceau          Ctrl+N"));
-        m.addItem (2, fr ("Ouvrir...                         Ctrl+O"));
-        m.addSeparator();
-        m.addItem (3, fr ("Enregistrer                    Ctrl+S"));
-        m.addItem (4, fr ("Enregistrer sous..."));
-        m.addSeparator();
-        m.addItem (5, fr ("Exporter (WAV, MP3, MIDI)...    Ctrl+E"));
+        auto ajouter = [&m] (int id, const juce::String& texte, const juce::String& raccourci = {}, bool actif = true)
+        {
+            juce::PopupMenu::Item item (texte);
+            item.itemID = id;
+            item.shortcutKeyDescription = raccourci;
+            item.isEnabled = actif;
+            m.addItem (item);
+        };
 
-        juce::Component::SafePointer<ComposantPrincipal> moi (this);
+        switch (index)
+        {
+            case 0:
+                ajouter (cmdNouveau, fr ("Nouveau morceau"), "Ctrl+N");
+                ajouter (cmdOuvrir, fr ("Ouvrir..."), "Ctrl+O");
+                m.addSeparator();
+                ajouter (cmdEnregistrer, fr ("Enregistrer"), "Ctrl+S");
+                ajouter (cmdEnregistrerSous, fr ("Enregistrer sous..."), "Ctrl+Maj+S");
+                m.addSeparator();
+                ajouter (cmdExporter, fr ("Exporter (WAV, MP3, MIDI)..."), "Ctrl+E");
+                m.addSeparator();
+                ajouter (cmdQuitter, fr ("Quitter"));
+                break;
 
-        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&transport.boutonFichier()),
-                         [moi] (int choix)
-                         {
-                             if (moi == nullptr)
-                                 return;
+            case 1:
+                ajouter (cmdAnnuler, fr ("Annuler"), "Ctrl+Z", edit->getUndoManager().canUndo());
+                ajouter (cmdRetablir, fr ("Rétablir"), "Ctrl+Y", edit->getUndoManager().canRedo());
+                m.addSeparator();
+                ajouter (cmdCopierClip, fr ("Copier le clip"), "Ctrl+C", selection.clipValide() != nullptr);
+                ajouter (cmdCollerClip, fr ("Coller le clip au trait de lecture"), "Ctrl+V");
+                ajouter (cmdDupliquerClip, fr ("Dupliquer le clip"), "Ctrl+D", selection.clipValide() != nullptr);
+                ajouter (cmdSupprimerClip, fr ("Supprimer le clip"), "Suppr", selection.clipValide() != nullptr);
+                break;
 
-                             switch (choix)
-                             {
-                                 case 1:  moi->nouveau();                  break;
-                                 case 2:  moi->ouvrir();                   break;
-                                 case 3:  moi->enregistrer (false, {});    break;
-                                 case 4:  moi->enregistrer (true, {});     break;
-                                 case 5:  moi->exporter();                 break;
-                                 default: break;
-                             }
-                         });
+            case 2:
+                ajouter (cmdVoirNotes, fr ("Notes du clip"), "Tab");
+                ajouter (cmdVoirInstrument, fr ("Instrument et effets de la piste"), "Tab");
+                break;
+
+            case 3:
+                ajouter (cmdReglagesAudio, fr ("Préférences audio (sortie du son, micro)..."));
+                break;
+
+            case 4:
+                ajouter (cmdRaccourcis, fr ("Raccourcis clavier..."));
+                ajouter (cmdJournal, fr ("Ouvrir le journal d'erreurs"));
+                m.addSeparator();
+                ajouter (cmdAPropos, fr ("À propos de MAO Quack"));
+                break;
+
+            default: break;
+        }
+
+        return m;
+    }
+
+    void menuItemSelected (int id, int) override
+    {
+        switch (id)
+        {
+            case cmdNouveau:            nouveau();                                  break;
+            case cmdOuvrir:             ouvrir();                                   break;
+            case cmdEnregistrer:        enregistrer (false, {});                    break;
+            case cmdEnregistrerSous:    enregistrer (true, {});                     break;
+            case cmdExporter:           exporter();                                 break;
+            case cmdQuitter:            juce::JUCEApplication::getInstance()->systemRequestedQuit();  break;
+            case cmdAnnuler:            edit->getUndoManager().undo();              break;
+            case cmdRetablir:           edit->getUndoManager().redo();              break;
+            case cmdCopierClip:         arrangement.copierClipChoisi();             break;
+            case cmdCollerClip:         arrangement.collerClip();                   break;
+            case cmdDupliquerClip:      arrangement.dupliquerClipChoisi();          break;
+            case cmdSupprimerClip:      arrangement.supprimerClipChoisi();          break;
+            case cmdVoirNotes:          bas.montrer (0);                            break;
+            case cmdVoirInstrument:     bas.montrer (1);                            break;
+            case cmdReglagesAudio:      ouvrirReglagesAudio();                      break;
+            case cmdRaccourcis:         montrerRaccourcis();                        break;
+            case cmdJournal:            Journal::ecrire ("Journal ouvert depuis le menu Aide");
+                                        Journal::fichier().startAsProcess();        break;
+            case cmdAPropos:            montrerAPropos();                           break;
+            default:                    break;
+        }
+    }
+
+private:
+    void montrerRaccourcis()
+    {
+        juce::AlertWindow::showAsync (
+            juce::MessageBoxOptions()
+                .withIconType (juce::MessageBoxIconType::InfoIcon)
+                .withTitle ("Raccourcis clavier")
+                .withMessage (fr ("Espace : lecture / stop\n"
+                                  "Tab : passer des notes à l'instrument\n"
+                                  "Ctrl+Z / Ctrl+Y : annuler / rétablir\n"
+                                  "Ctrl+S : enregistrer     Ctrl+E : exporter\n\n"
+                                  "Dans l'arrangement :\n"
+                                  "Double-clic : créer un clip     Suppr : l'effacer\n"
+                                  "Ctrl+C / Ctrl+V / Ctrl+D : copier / coller / dupliquer le clip\n"
+                                  "Molette : monter et descendre     Maj+molette : avancer et reculer\n"
+                                  "Ctrl+molette : zoomer\n\n"
+                                  "Dans le piano roll :\n"
+                                  "Double-clic : poser ou effacer une note     B : crayon\n"
+                                  "Ctrl+A : tout sélectionner     Flèches : déplacer les notes\n"
+                                  "Ctrl+C / Ctrl+X / Ctrl+V / Ctrl+D : copier / couper / coller / dupliquer"))
+                .withButton ("OK", 1)
+                .withAssociatedComponent (this),
+            nullptr);
+    }
+
+    void montrerAPropos()
+    {
+        juce::AlertWindow::showAsync (
+            juce::MessageBoxOptions()
+                .withIconType (juce::MessageBoxIconType::InfoIcon)
+                .withTitle ("MAO Quack")
+                .withMessage (fr ("Version ") + juce::String (MAOQUACK_VERSION)
+                                  + fr ("\n\nUn petit logiciel de musique pour débuter.\n"
+                                        "Construit avec JUCE et Tracktion Engine (logiciels libres, licence GPL).\n"
+                                        "Export MP3 : encodeur LAME."))
+                .withButton ("OK", 1)
+                .withAssociatedComponent (this),
+            nullptr);
     }
 
     void remplacer (std::unique_ptr<te::Edit> nouveauMorceau, const juce::File& f)
@@ -328,7 +440,6 @@ private:
         {
             fichier = f;
             edit->resetChangedStatus();
-            transport.definirTitre (nomDuMorceau());
 
             if (auto* fenetre = dynamic_cast<juce::DocumentWindow*> (getTopLevelComponent()))
                 fenetre->setName ("MAO Quack - " + nomDuMorceau());
@@ -474,6 +585,7 @@ public:
     void initialise (const juce::String&) override
     {
         juce::LookAndFeel::setDefaultLookAndFeel (&apparence);
+        Journal::demarrer (MAOQUACK_VERSION);
         Instruments::preparerSonsBatterie();
         engine = std::make_unique<te::Engine> (getApplicationName(), std::make_unique<ComportementQuack>(), nullptr);
         Effets::declarerTypes (*engine);
