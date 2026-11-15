@@ -17,6 +17,8 @@ jobs:
   windows:
     name: Windows
     runs-on: windows-latest
+    outputs:
+      mp3: ${{ steps.configurer.outputs.mp3 }}
     steps:
       - name: Récupérer le code
         uses: actions/checkout@v4
@@ -70,20 +72,90 @@ jobs:
             MAO-Quack-Windows.zip
             MAO-Quack-Installation.exe
 
+  linux:
+    name: Linux
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Installer les bibliothèques
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config file \
+            libasound2-dev libjack-jackd2-dev libfreetype6-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
+            libxrandr-dev libxrender-dev libgl1-mesa-dev libmp3lame-dev libfuse2
+
+      - name: Configurer
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compiler
+        run: cmake --build build --parallel
+
+      - name: Fabriquer l'AppImage
+        run: |
+          exe=$(find build -type f -name "MAO Quack" -perm -u+x | head -n 1)
+          test -n "$exe"
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
+          cp "$exe" AppDir/usr/bin/mao-quack
+          python3 -c "from PIL import Image" 2>/dev/null || pip install pillow
+          python3 -c "from PIL import Image; Image.open('assets/icone.png').resize((256,256)).save('AppDir/usr/share/icons/hicolor/256x256/apps/mao-quack.png')"
+          cat > AppDir/usr/share/applications/mao-quack.desktop <<'FIN'
+          [Desktop Entry]
+          Type=Application
+          Name=MAO Quack
+          Comment=Un petit logiciel de musique pour débuter
+          Exec=mao-quack %f
+          Icon=mao-quack
+          Categories=AudioVideo;Audio;Music;
+          MimeType=application/x-mao-quack;
+          FIN
+          sed -i 's/^ *//' AppDir/usr/share/applications/mao-quack.desktop
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage \
+            -d AppDir/usr/share/applications/mao-quack.desktop \
+            -i AppDir/usr/share/icons/hicolor/256x256/apps/mao-quack.png
+          mv MAO_Quack*.AppImage MAO-Quack-Linux.AppImage
+          chmod +x MAO-Quack-Linux.AppImage
+
+      - name: Garder le fichier avec la fabrication
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAO-Quack-Linux
+          path: MAO-Quack-Linux.AppImage
+
+  publier:
+    name: Publier
+    needs: [windows, linux]
+    if: always() && needs.windows.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer les fichiers fabriqués
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
       - name: Publier le dernier build (essais)
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: dernier-build
-          name: Dernier build d'essai (Windows)
+          name: Dernier build d'essai
           body: |
             Dernier build fabriqué automatiquement, pour les essais.
-            « MAO-Quack-Installation.exe » : l'installeur. « MAO-Quack-Windows.zip » : version sans installation.
-            Version ${{ github.sha }} - export MP3 : ${{ steps.configurer.outputs.mp3 }}
+            Windows : « MAO-Quack-Installation.exe » (installeur) ou « MAO-Quack-Windows.zip » (sans installation).
+            Linux : « MAO-Quack-Linux.AppImage » (Linux : ${{ needs.linux.result }}).
+            Version ${{ github.sha }} - export MP3 (Windows) : ${{ needs.windows.outputs.mp3 }}
           prerelease: true
           files: |
             MAO-Quack-Installation.exe
             MAO-Quack-Windows.zip
+            MAO-Quack-Linux.AppImage
 
       # Une vraie version : fabriquée quand on pousse une étiquette « v1.0.0 ».
       # Elle est créée en brouillon : il reste à la relire puis à cliquer sur « Publish release ».
@@ -95,10 +167,12 @@ jobs:
           draft: true
           generate_release_notes: true
           body: |
-            **Installation (Windows 10 / 11, 64 bits)** : télécharge « MAO-Quack-Installation.exe » et lance-le.
-            Sans installation : télécharge « MAO-Quack-Windows.zip », décompresse-le, puis lance « MAO Quack.exe ».
-
+            **Windows 10 / 11 (64 bits)** : télécharge « MAO-Quack-Installation.exe » et lance-le.
+            Sans installation : « MAO-Quack-Windows.zip », à décompresser, puis lance « MAO Quack.exe ».
             Windows peut afficher « Windows a protégé votre ordinateur » : clique sur « Informations complémentaires », puis « Exécuter quand même ».
+
+            **Linux (64 bits)** : télécharge « MAO-Quack-Linux.AppImage », rends-le exécutable (clic droit → Propriétés, ou `chmod +x MAO-Quack-Linux.AppImage`), puis lance-le.
           files: |
             MAO-Quack-Installation.exe
             MAO-Quack-Windows.zip
+            MAO-Quack-Linux.AppImage
