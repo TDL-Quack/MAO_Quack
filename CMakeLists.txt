@@ -65,6 +65,11 @@ target_link_libraries(MAOQuack PRIVATE
     MAOQuackDonnees
     juce::juce_recommended_config_flags)
 
+# Linux : certaines opérations atomiques de Tracktion ont besoin de libatomic
+if (UNIX AND NOT APPLE)
+    target_link_libraries(MAOQuack PRIVATE atomic)
+endif()
+
 # Export MP3 : encodeur libre LAME (facultatif ; installé par vcpkg lors de la fabrication)
 find_package(mp3lame CONFIG QUIET)
 
