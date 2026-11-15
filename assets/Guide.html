@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guide de MAO Quack</title><style>
+:root { --fond:#2b2b2b; --panneau:#353535; --texte:#e6e6e6; --doux:#a8a8a8; --accent:#ffb532; --trait:#4a4a4a; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--fond); color:var(--texte); font:17px/1.6 "Segoe UI",system-ui,sans-serif; }
+main { max-width:860px; margin:0 auto; padding:32px 24px 80px; }
+h1 { color:var(--accent); font-size:2.2em; margin:0 0 .3em; }
+h2 { color:var(--accent); border-bottom:1px solid var(--trait); padding-bottom:.25em; margin-top:2.2em; }
+h3 { margin-top:1.8em; } h4 { color:var(--accent); margin-top:1.5em; }
+a { color:var(--accent); }
+code { background:var(--panneau); padding:.1em .35em; border-radius:4px; font-size:.92em; }
+table { border-collapse:collapse; width:100%; margin:1em 0; font-size:.95em; }
+th, td { border:1px solid var(--trait); padding:.5em .7em; text-align:left; vertical-align:top; }
+th { background:var(--panneau); color:var(--accent); }
+blockquote { margin:1.2em 0; padding:.6em 1em; background:var(--panneau); border-left:4px solid var(--accent); border-radius:4px; }
+blockquote p { margin:0; }
+hr { border:0; border-top:1px solid var(--trait); margin:2.5em 0; }
+.toc { background:var(--panneau); border-radius:6px; padding:.8em 1.2em; font-size:.95em; }
+.toc ul { margin:.2em 0; padding-left:1.2em; }
+li { margin:.25em 0; }
+@media print { body { background:#fff; color:#111; } h1,h2,h4,th,a { color:#b36b00; } code,th,blockquote,.toc { background:#f0f0f0; } }
+</style></head><body><main><h1 id="guide-de-mao-quack">Guide de MAO Quack</h1>
+<p>MAO Quack est un petit logiciel pour faire de la musique sur ordinateur. Il ressemble volontairement à Ableton Live, en plus simple : ce que tu apprends ici te servira le jour où tu passeras à un logiciel plus gros.</p>
+<p>Ce guide a deux parties : <strong>faire son premier morceau</strong>, pas à pas, puis <strong>comprendre Quack Synth</strong>, le synthétiseur fourni.</p>
+<p>Un conseil avant de commencer : en bas à gauche de la fenêtre, la <strong>zone d'aide</strong> explique ce qui se trouve sous ta souris. Dans le doute, survole.</p>
+<div class="toc">
+<ul>
+<li><a href="#guide-de-mao-quack">Guide de MAO Quack</a><ul>
+<li><a href="#partie-1-mon-premier-morceau">Partie 1 : mon premier morceau</a><ul>
+<li><a href="#1-faire-connaissance-avec-la-fenetre">1. Faire connaissance avec la fenêtre</a></li>
+<li><a href="#2-regler-le-tempo">2. Régler le tempo</a></li>
+<li><a href="#3-poser-une-batterie">3. Poser une batterie</a></li>
+<li><a href="#4-faire-tourner-le-rythme-en-boucle">4. Faire tourner le rythme en boucle</a></li>
+<li><a href="#5-ajouter-une-basse">5. Ajouter une basse</a></li>
+<li><a href="#6-ajouter-des-accords-et-une-melodie">6. Ajouter des accords et une mélodie</a></li>
+<li><a href="#7-les-gestes-qui-font-gagner-du-temps">7. Les gestes qui font gagner du temps</a></li>
+<li><a href="#8-construire-le-morceau">8. Construire le morceau</a></li>
+<li><a href="#9-ajouter-des-sons-enregistres">9. Ajouter des sons enregistrés</a></li>
+<li><a href="#10-les-effets">10. Les effets</a></li>
+<li><a href="#11-faire-bouger-les-reglages-lautomation">11. Faire bouger les réglages : l'automation</a></li>
+<li><a href="#12-enregistrer-et-exporter">12. Enregistrer et exporter</a></li>
+</ul>
+</li>
+<li><a href="#partie-2-comprendre-quack-synth">Partie 2 : comprendre Quack Synth</a><ul>
+<li><a href="#la-colonne-de-gauche-toujours-visible">La colonne de gauche, toujours visible</a></li>
+<li><a href="#onglet-osc-les-quatre-oscillateurs">Onglet OSC : les quatre oscillateurs</a></li>
+<li><a href="#onglet-filter-mod-sculpter-et-faire-bouger">Onglet FILTER / MOD : sculpter et faire bouger</a><ul>
+<li><a href="#le-filtre">Le filtre</a></li>
+<li><a href="#les-enveloppes-env-1-2-3">Les enveloppes (ENV 1, 2, 3)</a></li>
+<li><a href="#les-lfo-lfo-1-2">Les LFO (LFO 1, 2)</a></li>
+<li><a href="#assigner-une-modulation-comme-dans-vital-ou-serum">Assigner une modulation (comme dans Vital ou Serum)</a></li>
+</ul>
+</li>
+<li><a href="#onglet-fx-les-effets-du-synthe">Onglet FX : les effets du synthé</a></li>
+<li><a href="#enregistrer-son-propre-son">Enregistrer son propre son</a></li>
+<li><a href="#fabriquer-une-basse-de-a-a-z">Fabriquer une basse de A à Z</a></li>
+</ul>
+</li>
+<li><a href="#les-autres-instruments-en-bref">Les autres instruments, en bref</a></li>
+<li><a href="#ou-sont-mes-fichiers">Où sont mes fichiers ?</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<hr />
+<h2 id="partie-1-mon-premier-morceau">Partie 1 : mon premier morceau</h2>
+<h3 id="1-faire-connaissance-avec-la-fenetre">1. Faire connaissance avec la fenêtre</h3>
+<table>
+<thead>
+<tr>
+<th>Zone</th>
+<th>Où</th>
+<th>À quoi elle sert</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Barre de menus</td>
+<td>tout en haut</td>
+<td>Fichier, Édition, Affichage, Options, Aide</td>
+</tr>
+<tr>
+<td>Barre de transport</td>
+<td>sous les menus</td>
+<td>tempo, métronome, lecture, stop, position, boucle, automation</td>
+</tr>
+<tr>
+<td>Navigateur</td>
+<td>à gauche</td>
+<td>la réserve d'instruments et d'effets</td>
+</tr>
+<tr>
+<td>Arrangement</td>
+<td>au centre</td>
+<td>ton morceau, de gauche à droite ; une ligne par piste</td>
+</tr>
+<tr>
+<td>En-têtes de pistes</td>
+<td>à droite de l'arrangement</td>
+<td>nom, muet (M), solo (S), volume de chaque piste</td>
+</tr>
+<tr>
+<td>Zone d'aide</td>
+<td>en bas à gauche</td>
+<td>l'explication de ce que tu survoles</td>
+</tr>
+<tr>
+<td>Zone du bas</td>
+<td>en bas</td>
+<td>les notes du clip choisi, ou l'instrument et les effets de la piste choisie</td>
+</tr>
+</tbody>
+</table>
+<p>Trois mots à connaître :</p>
+<ul>
+<li>Une <strong>piste</strong> est une ligne du morceau. Une <strong>piste MIDI</strong> contient des notes, jouées par un instrument. Une <strong>piste audio</strong> contient des sons enregistrés (boucles, voix, bruitages).</li>
+<li>Un <strong>clip</strong> est un bloc posé sur une piste : un bloc de notes sur une piste MIDI, un son sur une piste audio.</li>
+<li>Le <strong>tempo</strong> est la vitesse du morceau, en battements par minute (BPM).</li>
+</ul>
+<h3 id="2-regler-le-tempo">2. Régler le tempo</h3>
+<p>Dans la barre de transport, glisse sur la case <strong>BPM</strong>. 120 est un bon départ ; autour de 90 pour quelque chose de posé, 140 et plus pour quelque chose de nerveux.</p>
+<p>Le bouton rond à côté allume le <strong>métronome</strong>, qui fait « tic » pendant la lecture pour t'aider à rester en rythme.</p>
+<h3 id="3-poser-une-batterie">3. Poser une batterie</h3>
+<p>Un nouveau morceau s'ouvre avec deux pistes MIDI vides et deux pistes audio.</p>
+<ol>
+<li>Dans le navigateur, ouvre <strong>Instruments</strong>.</li>
+<li>Glisse <strong>Quack Drums</strong> sur la piste « MIDI 1 » (ou choisis la piste puis double-clique sur Quack Drums). La piste prend le nom de l'instrument.</li>
+<li>Dans l'arrangement, <strong>double-clique</strong> sur cette piste, au tout début : un clip d'une mesure apparaît.</li>
+<li>Clique sur le clip : la zone du bas affiche le <strong>piano roll</strong>. Pour une batterie, chaque ligne est un son (grosse caisse, caisse claire, charley…).</li>
+<li><strong>Double-clique</strong> dans la grille pour poser une note. Double-clique sur une note pour l'effacer.</li>
+</ol>
+<p>Un rythme simple pour commencer (une mesure = 4 temps, chaque temps divisé en 4 cases) :</p>
+<ul>
+<li><strong>Grosse caisse</strong> : sur les temps 1 et 3.</li>
+<li><strong>Caisse claire</strong> : sur les temps 2 et 4.</li>
+<li><strong>Charley fermé</strong> : une note toutes les deux cases.</li>
+</ul>
+<p>Appuie sur <strong>Espace</strong> pour écouter, et encore sur Espace pour arrêter.</p>
+<blockquote>
+<p><strong>Astuce :</strong> le bouton <strong>Crayon</strong> (touche <strong>B</strong>) change le geste : un simple clic pose une note, un clic sur une note l'efface. Éteins-le pour sélectionner et déplacer.</p>
+</blockquote>
+<h3 id="4-faire-tourner-le-rythme-en-boucle">4. Faire tourner le rythme en boucle</h3>
+<p>Pour travailler, il est pratique que le rythme tourne sans s'arrêter.</p>
+<ul>
+<li>Choisis ton clip et fais <strong>Ctrl+L</strong> : la boucle se cale sur lui et s'allume.</li>
+<li>La boucle est la <strong>barre orange tout en haut de la règle</strong>. Ses deux extrémités sont des curseurs : tire-les séparément pour l'allonger ou la raccourcir. Attrape le milieu pour la déplacer.</li>
+<li>Le bouton <strong>Boucle</strong> de la barre de transport l'allume et l'éteint.</li>
+</ul>
+<h3 id="5-ajouter-une-basse">5. Ajouter une basse</h3>
+<ol>
+<li>Glisse <strong>Instruments → Quack Synth → Basse</strong> sur la piste « MIDI 2 ».</li>
+<li>Double-clique sur la piste pour créer un clip, puis clique dessus.</li>
+<li>Le piano roll affiche maintenant un clavier. Plus haut = plus aigu, plus bas = plus grave. Le nom de la note sous la souris s'affiche.</li>
+<li>Pose quelques notes graves. Pour allonger une note, tire son bord droit.</li>
+</ol>
+<p>Une basse efficace joue souvent la même note que la grosse caisse, sur les mêmes temps.</p>
+<h3 id="6-ajouter-des-accords-et-une-melodie">6. Ajouter des accords et une mélodie</h3>
+<p>Il te faut de nouvelles pistes : sous la dernière piste, clique sur <strong>+ Ajouter une piste</strong>, puis <strong>Piste MIDI</strong>. Glisse ensuite un instrument dessus : <strong>Accords</strong> pour des notes tenues, <strong>Mélodie</strong> pour l'air principal.</p>
+<p>Un <strong>accord</strong>, ce sont plusieurs notes jouées en même temps. Pour débuter, pose trois notes l'une au-dessus de l'autre en sautant à chaque fois une touche blanche (par exemple Do, Mi, Sol), et fais-les durer toute la mesure.</p>
+<p>Pour la mélodie, reste d'abord sur les touches blanches : tout sonnera juste avec les accords ci-dessus.</p>
+<h3 id="7-les-gestes-qui-font-gagner-du-temps">7. Les gestes qui font gagner du temps</h3>
+<p><strong>Dans le piano roll</strong></p>
+<table>
+<thead>
+<tr>
+<th>Geste</th>
+<th>Effet</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Glisser dans le vide</td>
+<td>entourer plusieurs notes</td>
+</tr>
+<tr>
+<td>Maj + clic</td>
+<td>ajouter une note à la sélection</td>
+</tr>
+<tr>
+<td>Ctrl+A</td>
+<td>tout sélectionner</td>
+</tr>
+<tr>
+<td>Ctrl+C, Ctrl+X, Ctrl+V</td>
+<td>copier, couper, coller (au trait bleu, qu'on place d'un clic)</td>
+</tr>
+<tr>
+<td>Ctrl+D</td>
+<td>dupliquer la sélection juste après</td>
+</tr>
+<tr>
+<td>Ctrl + glisser</td>
+<td>dupliquer les notes en les déplaçant</td>
+</tr>
+<tr>
+<td>Flèches</td>
+<td>déplacer les notes (Maj + haut/bas : une octave)</td>
+</tr>
+<tr>
+<td>Suppr</td>
+<td>effacer</td>
+</tr>
+<tr>
+<td>Menu de gauche</td>
+<td>changer la longueur du clip (1 à 16 mesures)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Dans l'arrangement</strong></p>
+<table>
+<thead>
+<tr>
+<th>Geste</th>
+<th>Effet</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Glisser un clip</td>
+<td>le déplacer, y compris vers une autre piste du même type</td>
+</tr>
+<tr>
+<td>Ctrl + glisser</td>
+<td>le dupliquer</td>
+</tr>
+<tr>
+<td>Tirer le bord droit</td>
+<td>l'allonger ou le raccourcir</td>
+</tr>
+<tr>
+<td>Tirer le bord gauche</td>
+<td>choisir où il commence</td>
+</tr>
+<tr>
+<td>Ctrl+D</td>
+<td>le dupliquer juste après</td>
+</tr>
+<tr>
+<td>Ctrl+C puis Ctrl+V</td>
+<td>le coller au trait de lecture</td>
+</tr>
+<tr>
+<td>Poser un clip sur un autre</td>
+<td>il l'écrase</td>
+</tr>
+<tr>
+<td>Molette</td>
+<td>monter et descendre</td>
+</tr>
+<tr>
+<td>Maj + molette</td>
+<td>avancer et reculer</td>
+</tr>
+<tr>
+<td>Ctrl + molette</td>
+<td>zoomer</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Partout</strong> : <strong>Ctrl+Z</strong> annule, <strong>Ctrl+Y</strong> rétablit. N'aie pas peur d'essayer.</p>
+<h3 id="8-construire-le-morceau">8. Construire le morceau</h3>
+<p>Un morceau, c'est une histoire : des parties arrivent, d'autres s'en vont.</p>
+<ul>
+<li>Duplique tes clips (Ctrl+D) pour remplir plusieurs mesures.</li>
+<li>Fais entrer les instruments un par un : la batterie seule, puis la basse, puis les accords, puis la mélodie.</li>
+<li>Retire presque tout pendant quelques mesures, puis fais tout revenir : c'est le principe du « break ».</li>
+<li>Pose des <strong>repères</strong> pour t'y retrouver : double-clique dans la règle, sous la barre de boucle, et donne un nom (« Intro », « Refrain »…). On les déplace en les glissant ; clic droit pour les renommer ou les supprimer.</li>
+</ul>
+<p>Les boutons <strong>M</strong> (muet) et <strong>S</strong> (solo) de chaque piste servent à écouter une partie sans les autres, ou toute seule. Pense à les éteindre ensuite : un solo oublié s'entend aussi dans l'export.</p>
+<h3 id="9-ajouter-des-sons-enregistres">9. Ajouter des sons enregistrés</h3>
+<p>Sur une <strong>piste audio</strong>, double-clique pour choisir un fichier son, ou glisse un fichier depuis l'explorateur de Windows (WAV, MP3, AIFF, FLAC, OGG).</p>
+<p>Clique sur le clip audio : la zone du bas affiche son dessin, son volume, et le bouton <strong>Warp</strong>. Le Warp cale une boucle sur le tempo du morceau. MAO Quack devine le tempo d'origine d'après la durée ; si la boucle ne tombe pas juste, corrige le BPM d'origine, ou essaie les boutons <strong>/2</strong> et <strong>x2</strong>.</p>
+<h3 id="10-les-effets">10. Les effets</h3>
+<p>Clique sur l'en-tête d'une piste : la zone du bas montre sa <strong>chaîne</strong>, c'est-à-dire son instrument suivi de ses effets. Le son la traverse de gauche à droite, donc <strong>l'ordre compte</strong>.</p>
+<p>Pour ajouter un effet, glisse-le depuis <strong>Effets</strong> dans le navigateur, à l'endroit voulu (un trait blanc montre où il se posera), ou clique sur <strong>+ Effet</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>Effet</th>
+<th>Ce qu'il fait</th>
+<th>Quand l'utiliser</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EQ</td>
+<td>monte ou baisse graves, médiums, aigus</td>
+<td>éclaircir un son, enlever du grave inutile</td>
+</tr>
+<tr>
+<td>Volume</td>
+<td>un bouton de niveau et de gauche/droite</td>
+<td>équilibrer à un endroit précis de la chaîne</td>
+</tr>
+<tr>
+<td>Compressor</td>
+<td>rapproche les sons forts et les sons faibles</td>
+<td>rendre un son plus régulier ; effet « pompe » avec le sidechain</td>
+</tr>
+<tr>
+<td>Delay</td>
+<td>écho</td>
+<td>donner du mouvement à une mélodie</td>
+</tr>
+<tr>
+<td>Reverb</td>
+<td>impression de grande salle</td>
+<td>donner de l'espace</td>
+</tr>
+<tr>
+<td>Distortion</td>
+<td>salit et durcit</td>
+<td>une basse ou un lead plus agressif</td>
+</tr>
+</tbody>
+</table>
+<p>Chaque effet a un bouton <strong>On</strong> pour comparer avec et sans, un bouton <strong>–</strong> pour le réduire en fine bande, et un <strong>X</strong> pour le retirer. Pour le déplacer, glisse sa barre de titre.</p>
+<p><strong>L'effet « pompe » (sidechain)</strong> : mets un Compressor sur la piste d'accords, puis dans sa liste Sidechain choisis la piste de batterie. À chaque coup, les accords baissent un instant. La barre <strong>GR</strong> montre de combien.</p>
+<h3 id="11-faire-bouger-les-reglages-lautomation">11. Faire bouger les réglages : l'automation</h3>
+<p>L'automation fait changer un réglage tout seul pendant le morceau : un volume qui monte, un filtre qui s'ouvre.</p>
+<ol>
+<li>Clique sur <strong>Automation</strong> dans la barre de transport (touche <strong>A</strong>).</li>
+<li>Sur chaque piste, un bouton remplace le volume : il choisit <strong>quel réglage</strong> tu dessines (Volume, Pan, ou n'importe quel potard de l'instrument et des effets).</li>
+<li>Sur la piste, <strong>clique</strong> pour poser un point, <strong>glisse</strong> pour le déplacer, <strong>double-clique</strong> ou clic droit pour l'effacer.</li>
+<li>Appuie de nouveau sur <strong>A</strong> pour revenir aux clips.</li>
+</ol>
+<h3 id="12-enregistrer-et-exporter">12. Enregistrer et exporter</h3>
+<ul>
+<li><strong>Ctrl+S</strong> enregistre ton morceau en fichier <code>.quack</code>, dans <code>Documents\MAO Quack</code>. Ce fichier ne s'ouvre qu'avec MAO Quack. Enregistre souvent.</li>
+<li><strong>Fichier → Exporter</strong> (Ctrl+E) fabrique un fichier à faire écouter : coche <strong>WAV</strong> (qualité maximale), <strong>MP3</strong> (plus léger) ou <strong>MIDI</strong> (les notes seulement, à rouvrir dans un autre logiciel). Tu peux en cocher plusieurs, et choisir « une piste par fichier ».</li>
+</ul>
+<hr />
+<h2 id="partie-2-comprendre-quack-synth">Partie 2 : comprendre Quack Synth</h2>
+<p>Quack Synth fabrique des sons à partir de rien. Tous les préréglages (Basse, Mélodie, Accords, Cloches, Orgue, Jeu vidéo) sont le même synthétiseur, réglé différemment. Pour apprendre, pars du préréglage <strong>Init</strong> : un son brut, sans filtre ni effet.</p>
+<p>Le son suit toujours le même trajet :</p>
+<p><strong>Oscillateurs → Filtre → Effets</strong></p>
+<p>Les oscillateurs fabriquent le son, le filtre le sculpte, les effets le décorent. Trois onglets correspondent à ces trois étapes : <strong>OSC</strong>, <strong>FILTER / MOD</strong>, <strong>FX</strong>.</p>
+<h3 id="la-colonne-de-gauche-toujours-visible">La colonne de gauche, toujours visible</h3>
+<ul>
+<li><strong>L'oscilloscope</strong> dessine le son en direct. C'est ton meilleur professeur : change un réglage, joue une note et regarde le dessin se transformer.</li>
+<li><strong>Level</strong> : le volume général du synthé.</li>
+<li><strong>Vel</strong> : de combien la force d'une note change son volume.</li>
+<li><strong>Glide</strong> : en mode Mono ou Legato, le temps pour glisser d'une note à la suivante.</li>
+<li><strong>Mono / Legato / Poly</strong> : Poly joue plusieurs notes à la fois (accords). Mono n'en joue qu'une (basses, solos). Legato est un Mono où les notes liées ne redémarrent pas l'enveloppe.</li>
+</ul>
+<p>Pour entendre le synthé sans lancer le morceau, clique sur une touche du clavier du piano roll.</p>
+<h3 id="onglet-osc-les-quatre-oscillateurs">Onglet OSC : les quatre oscillateurs</h3>
+<p>Un oscillateur produit une onde. Sa <strong>forme</strong> donne la couleur du son. Clique sur le petit écran pour la choisir :</p>
+<table>
+<thead>
+<tr>
+<th>Forme</th>
+<th>Son</th>
+<th>Pour quoi</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sine</td>
+<td>doux, rond, pur</td>
+<td>sous-basses, cloches</td>
+</tr>
+<tr>
+<td>Triangle</td>
+<td>doux avec un peu de brillance</td>
+<td>flûtes, sons calmes</td>
+</tr>
+<tr>
+<td>Saw (scie)</td>
+<td>riche, brillant</td>
+<td>basses, leads, nappes</td>
+</tr>
+<tr>
+<td>Square (carré)</td>
+<td>creux, façon jeu vidéo</td>
+<td>sons rétro, basses</td>
+</tr>
+<tr>
+<td>Noise</td>
+<td>du souffle</td>
+<td>vent, percussions</td>
+</tr>
+</tbody>
+</table>
+<p>Chaque oscillateur a les mêmes réglages :</p>
+<ul>
+<li><strong>Le bouton numéroté</strong> l'allume ou le coupe. Coupe les autres pour écouter ce que chacun apporte.</li>
+<li><strong>Tune</strong> : la hauteur, en demi-tons. +12 = une octave plus haut, –12 = une octave plus bas.</li>
+<li><strong>Fine</strong> : un accordage très fin. Deux oscillateurs légèrement décalés donnent un son plus large.</li>
+<li><strong>Level</strong> : son volume.</li>
+<li><strong>Width</strong> : pour l'onde carrée seulement, la largeur du carré.</li>
+<li><strong>Voices</strong> : le nombre de copies jouées ensemble (unisson).</li>
+<li><strong>Detune</strong> : désaccorde légèrement ces copies. Ne s'entend qu'avec 2 voix ou plus.</li>
+<li><strong>Spread</strong> : répartit les voix entre la gauche et la droite.</li>
+<li><strong>Pan</strong> : place l'oscillateur à gauche ou à droite.</li>
+</ul>
+<p><strong>Trois essais à faire depuis Init</strong></p>
+<ol>
+<li><em>Un son épais</em> : sur l'oscillateur 1, monte Voices à 4 et Detune vers un quart.</li>
+<li><em>Une basse solide</em> : allume l'oscillateur 2 en Square, avec Tune à –12.</li>
+<li><em>Un son large</em> : allume l'oscillateur 2 en Saw, avec Fine très légèrement décalé.</li>
+</ol>
+<h3 id="onglet-filter-mod-sculpter-et-faire-bouger">Onglet FILTER / MOD : sculpter et faire bouger</h3>
+<h4 id="le-filtre">Le filtre</h4>
+<p>Le filtre enlève une partie du son. Sa courbe montre ce qui passe : graves à gauche, aigus à droite.</p>
+<ul>
+<li><strong>Type</strong> : <em>Lowpass</em> garde les graves et coupe les aigus (le plus utilisé). <em>Highpass</em> fait l'inverse. <em>Bandpass</em> ne garde qu'une bande au milieu. <em>Notch</em> creuse un trou. <em>Off</em> : pas de filtre.</li>
+<li><strong>12 dB / 24 dB</strong> : la pente. 24 dB coupe plus franchement.</li>
+<li><strong>Freq</strong> : la fréquence de coupure, là où le filtre commence à couper.</li>
+<li><strong>Res</strong> : la résonance, qui fait « siffler » le son juste à la coupure.</li>
+<li><strong>Key</strong> : fait suivre le filtre avec la hauteur de la note.</li>
+</ul>
+<p>Tu peux aussi tirer directement le point sur la courbe : gauche/droite pour Freq, haut/bas pour Res.</p>
+<h4 id="les-enveloppes-env-1-2-3">Les enveloppes (ENV 1, 2, 3)</h4>
+<p>Une enveloppe décrit la vie d'une note, en quatre réglages :</p>
+<ul>
+<li><strong>Attack</strong> : le temps pour arriver au maximum. Court : ça claque. Long : ça gonfle doucement.</li>
+<li><strong>Decay</strong> : le temps pour redescendre.</li>
+<li><strong>Sustain</strong> : le niveau tant que la note est tenue. À zéro, le son s'éteint tout seul, comme un piano.</li>
+<li><strong>Release</strong> : le temps pour s'éteindre quand la note s'arrête.</li>
+</ul>
+<p><strong>ENV 1</strong> règle toujours le <strong>volume</strong> de la note. <strong>ENV 2</strong> et <strong>ENV 3</strong> sont libres : elles ne font rien tant que tu ne les as pas assignées à un potard.</p>
+<h4 id="les-lfo-lfo-1-2">Les LFO (LFO 1, 2)</h4>
+<p>Un LFO est un oscillateur très lent. On ne l'entend pas : il fait bouger un réglage tout seul, en boucle. <strong>Wave</strong> choisit la forme du mouvement, <strong>Rate</strong> sa vitesse, <strong>Depth</strong> son amplitude, <strong>Sync</strong> le cale sur le tempo.</p>
+<h4 id="assigner-une-modulation-comme-dans-vital-ou-serum">Assigner une modulation (comme dans Vital ou Serum)</h4>
+<p>C'est le geste le plus important du synthé :</p>
+<ol>
+<li>Ouvre l'onglet <strong>FILTER / MOD</strong> et choisis une source : ENV 2, ENV 3, LFO 1 ou LFO 2.</li>
+<li>Attrape sa poignée <strong>« Glisser sur un potard »</strong>.</li>
+<li>Dépose-la sur n'importe quel potard. Pour atteindre un potard d'un autre onglet, passe sur cet onglet pendant le glisser : il s'ouvre.</li>
+</ol>
+<p>Sur le potard modulé :</p>
+<ul>
+<li>une <strong>pastille de couleur</strong> apparaît : glisse-la vers le haut ou le bas pour doser (vers le bas : sens inverse) ;</li>
+<li>un <strong>arc</strong> montre jusqu'où le réglage bouge, et un <strong>point blanc</strong> suit la valeur en direct ;</li>
+<li>pour retirer la modulation : <strong>clic droit</strong> sur le potard → « Délier », ou clic droit sur la pastille.</li>
+</ul>
+<p><strong>Quatre recettes classiques</strong></p>
+<table>
+<thead>
+<tr>
+<th>Recette</th>
+<th>Source</th>
+<th>Posée sur</th>
+<th>Résultat</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Basse qui claque</td>
+<td>ENV 2 (Decay court, Sustain bas)</td>
+<td>Freq du filtre</td>
+<td>le filtre s'ouvre puis se referme à chaque note</td>
+</tr>
+<tr>
+<td>Wah-wah</td>
+<td>LFO 1 (Sine)</td>
+<td>Freq du filtre</td>
+<td>le son s'ouvre et se ferme en boucle</td>
+</tr>
+<tr>
+<td>Vibrato</td>
+<td>LFO 1 (Sine, rapide, faible dose)</td>
+<td>Fine d'un oscillateur</td>
+<td>la note tremble légèrement</td>
+</tr>
+<tr>
+<td>Trémolo</td>
+<td>LFO 2</td>
+<td>Level</td>
+<td>le volume ondule</td>
+</tr>
+</tbody>
+</table>
+<p>Quand une modulation agit sur le filtre, une <strong>courbe blanche</strong> s'anime sur l'écran du filtre.</p>
+<h3 id="onglet-fx-les-effets-du-synthe">Onglet FX : les effets du synthé</h3>
+<p>Appliqués tout à la fin, après le filtre, dans cet ordre :</p>
+<ul>
+<li><strong>Distortion</strong> : salit le son.</li>
+<li><strong>Chorus</strong> : l'épaissit, comme si plusieurs instruments jouaient ensemble.</li>
+<li><strong>Delay</strong> : un écho calé sur le tempo.</li>
+<li><strong>Reverb</strong> : l'impression d'une grande salle.</li>
+</ul>
+<p>Chacun s'allume d'un clic sur son nom.</p>
+<h3 id="enregistrer-son-propre-son">Enregistrer son propre son</h3>
+<p>Quand un son te plaît, clique sur <strong>Save</strong> dans la barre de titre du synthé et donne-lui un nom. Tu le retrouves dans la liste des préréglages et dans le navigateur, sous Quack Synth. Clic droit dessus dans le navigateur pour le supprimer.</p>
+<h3 id="fabriquer-une-basse-de-a-a-z">Fabriquer une basse de A à Z</h3>
+<ol>
+<li>Glisse <strong>Quack Synth</strong> (le dossier lui-même) sur une piste MIDI : tu obtiens le son <strong>Init</strong>.</li>
+<li>Onglet <strong>OSC</strong> : oscillateur 1 en Saw. Allume l'oscillateur 2, en Square, <strong>Tune à –12</strong>.</li>
+<li>Colonne de gauche : passe en <strong>Mono</strong>.</li>
+<li>Onglet <strong>FILTER / MOD</strong> : filtre <strong>Lowpass</strong>, <strong>Freq</strong> vers le premier tiers, un peu de <strong>Res</strong>.</li>
+<li>Choisis <strong>ENV 2</strong> : Attack à zéro, Decay court, Sustain bas.</li>
+<li>Glisse la poignée d'ENV 2 sur <strong>Freq</strong>, puis dose avec la pastille.</li>
+<li>Joue des notes graves. Clique sur <strong>Save</strong>.</li>
+</ol>
+<p>Tu viens de refaire, à peu de chose près, le préréglage Basse.</p>
+<hr />
+<h2 id="les-autres-instruments-en-bref">Les autres instruments, en bref</h2>
+<p><strong>Quack Drums</strong> : une grille de 16 pads, un son par pad (C1 en bas à gauche). Clic pour écouter ; clic droit pour renommer, charger un autre son ou vider le pad ; on peut aussi glisser un fichier son sur un pad. <strong>Save</strong> enregistre le kit entier.</p>
+<p><strong>Quack Sampler</strong> : joue un son enregistré comme un instrument. En mode <strong>Clavier</strong>, le son est joué plus aigu ou plus grave selon la touche. En mode <strong>Tranches</strong>, il est découpé en parts égales, une par touche à partir de C1 : idéal pour rejouer une boucle de batterie dans l'ordre que tu veux.</p>
+<p><strong>Plugins VST3</strong> : menu <strong>Options → Plugins VST</strong> pour chercher ceux de ton ordinateur. Ils apparaissent ensuite dans le navigateur ; clic droit pour les ranger dans Instruments ou Effets.</p>
+<h2 id="ou-sont-mes-fichiers">Où sont mes fichiers ?</h2>
+<p>Tout est dans <code>Documents\MAO Quack</code> :</p>
+<ul>
+<li>tes morceaux (<code>.quack</code>) ;</li>
+<li>le dossier <code>Exports</code> ;</li>
+<li>le dossier <code>Bibliothèque</code> : préréglages, kits, favoris, réglages et journal d'erreurs.</li>
+</ul>
+<p>En cas de problème, <strong>Aide → Ouvrir le journal d'erreurs</strong> montre ce que le logiciel a noté.</p></main></body></html>

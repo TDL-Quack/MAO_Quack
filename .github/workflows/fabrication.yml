@@ -3,6 +3,7 @@ name: Fabrication
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -50,20 +51,54 @@ jobs:
           Copy-Item $exe.FullName "sortie/MAO Quack/"
           Compress-Archive -Path "sortie/MAO Quack" -DestinationPath "MAO-Quack-Windows.zip" -Force
 
+      - name: Fabriquer l'installeur
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(MAOQuack VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup introuvable" }
+          & $iscc "/DVersion=$version" installeur\MAOQuack.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path "MAO-Quack-Installation.exe")) { throw "Installeur introuvable" }
+
       - name: Garder le fichier avec la fabrication
         uses: actions/upload-artifact@v4
         with:
           name: MAO-Quack-Windows
-          path: MAO-Quack-Windows.zip
+          path: |
+            MAO-Quack-Windows.zip
+            MAO-Quack-Installation.exe
 
-      - name: Publier dans « Releases »
+      - name: Publier le dernier build (essais)
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: dernier-build
-          name: Dernière version (Windows)
+          name: Dernier build d'essai (Windows)
           body: |
-            Dernière version fabriquée automatiquement.
-            Télécharge « MAO-Quack-Windows.zip », décompresse-le, puis lance « MAO Quack.exe ».
+            Dernier build fabriqué automatiquement, pour les essais.
+            « MAO-Quack-Installation.exe » : l'installeur. « MAO-Quack-Windows.zip » : version sans installation.
             Version ${{ github.sha }} - export MP3 : ${{ steps.configurer.outputs.mp3 }}
           prerelease: true
-          files: MAO-Quack-Windows.zip
+          files: |
+            MAO-Quack-Installation.exe
+            MAO-Quack-Windows.zip
+
+      # Une vraie version : fabriquée quand on pousse une étiquette « v1.0.0 ».
+      # Elle est créée en brouillon : il reste à la relire puis à cliquer sur « Publish release ».
+      - name: Préparer la version publique (brouillon)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MAO Quack ${{ github.ref_name }}
+          draft: true
+          generate_release_notes: true
+          body: |
+            **Installation (Windows 10 / 11, 64 bits)** : télécharge « MAO-Quack-Installation.exe » et lance-le.
+            Sans installation : télécharge « MAO-Quack-Windows.zip », décompresse-le, puis lance « MAO Quack.exe ».
+
+            Windows peut afficher « Windows a protégé votre ordinateur » : clique sur « Informations complémentaires », puis « Exécuter quand même ».
+          files: |
+            MAO-Quack-Installation.exe
+            MAO-Quack-Windows.zip

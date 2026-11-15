@@ -437,6 +437,13 @@ namespace Instruments
         for (auto& f : fichiers)
             liste.add ({ "preset:" + f.getFileNameWithoutExtension(), f.getFileNameWithoutExtension(), true });
 
+        // Les kits de batterie enregistrés par l'utilisateur
+        auto kits = dossierPresets().findChildFiles (juce::File::findFiles, false, "*.quackkit");
+        kits.sort();
+
+        for (auto& f : kits)
+            liste.add ({ "kit:" + f.getFileNameWithoutExtension(), f.getFileNameWithoutExtension(), true });
+
         return liste;
     }
 
@@ -463,9 +470,52 @@ namespace Instruments
         return false;
     }
 
+    inline juce::File fichierKit (const juce::String& nom)
+    {
+        return dossierPresets().getChildFile (juce::File::createLegalFileName (nom) + ".quackkit");
+    }
+
+    /** Enregistre un kit de batterie (ses sons et leurs réglages) comme préréglage personnel. */
+    inline bool enregistrerKit (te::SamplerPlugin& batterie, const juce::String& nom)
+    {
+        static_cast<te::Plugin&> (batterie).flushPluginStateToValueTree();
+        batterie.state.setProperty (idPreset(), nom, nullptr);
+
+        auto copie = batterie.state.createCopy();
+        copie.removeProperty ("id", nullptr);       // l'identifiant appartient au morceau, pas au kit
+
+        if (auto xml = copie.createXml())
+            return xml->writeTo (fichierKit (nom));
+
+        return false;
+    }
+
     /** Met sur la piste l'instrument ou le préréglage désigné par son identifiant. */
     inline bool appliquer (te::AudioTrack& piste, const juce::String& id)
     {
+        if (id.startsWith ("kit:"))
+        {
+            // Un kit de batterie personnel : on recrée la batterie telle qu'elle a été enregistrée
+            const auto nom = id.fromFirstOccurrenceOf ("kit:", false, false);
+            auto xml = juce::parseXML (fichierKit (nom));
+
+            if (xml == nullptr)
+                return false;
+
+            auto etat = juce::ValueTree::fromXml (*xml);
+            etat.removeProperty ("id", nullptr);
+            etat.setProperty (idPreset(), nom, nullptr);
+
+            if (auto plugin = piste.edit.getPluginCache().createNewPlugin (etat))
+            {
+                retirerInstruments (piste);
+                piste.pluginList.insertPlugin (plugin, 0, nullptr);
+                return true;
+            }
+
+            return false;
+        }
+
         for (auto t : tous())
         {
             if (idDe (t) == id)
@@ -541,18 +591,31 @@ namespace Instruments
             {
                 if (auto* batterie = dynamic_cast<te::SamplerPlugin*> (p))
                 {
-                    for (int i = 0; i < batterie->getNumSounds(); ++i)
+                    // On lit les chemins dans l'état enregistré du plugin : juste après l'ouverture
+                    // d'un morceau, la batterie n'a pas encore chargé ses sons.
+                    int i = 0;
+
+                    for (auto son : batterie->state)
                     {
-                        const juce::File actuel (batterie->getSoundMedia (i));
+                        if (! son.hasType ("SOUND"))
+                            continue;
 
-                        if (! actuel.existsAsFile())
+                        const auto chemin = son.getProperty ("source").toString();
+                        const auto nomFichier = chemin.replaceCharacter ('\\', '/').fromLastOccurrenceOf ("/", false, false);
+                        const bool present = juce::File::isAbsolutePath (chemin) && juce::File (chemin).existsAsFile();
+
+                        if (! present)
                         {
-                            const auto remplacant = dossier.getChildFile (actuel.getFileName());
+                            const auto remplacant = dossier.getChildFile (nomFichier);
 
-                            if (remplacant.existsAsFile())
+                            if (nomFichier.isNotEmpty() && remplacant.existsAsFile())
                                 batterie->setSoundMedia (i, remplacant.getFullPathName());
                         }
+
+                        ++i;
                     }
+
+                    batterie->flushPendingUpdates();
                 }
             }
         }

@@ -64,6 +64,21 @@ static std::unique_ptr<te::Edit> creerMorceauDeDemo (te::Engine& e)
     return ed;
 }
 
+/** Ouvre un morceau enregistré (fichier .quack). Renvoie nullptr si le fichier n'est pas lisible. */
+static std::unique_ptr<te::Edit> chargerMorceau (te::Engine& e, const juce::File& fichier)
+{
+    auto ed = te::loadEditFromFile (e, fichier);
+
+    if (ed == nullptr || te::getAudioTracks (*ed).isEmpty())
+        return {};
+
+    Instruments::reparerSonsBatterie (*ed);
+    Effets::preparerOscillos (*ed);
+    ed->getUndoManager().clearUndoHistory();
+    ed->resetChangedStatus();
+    return ed;
+}
+
 /** Le morceau affiché au lancement : la démo la toute première fois, un morceau vierge ensuite. */
 static std::unique_ptr<te::Edit> creerMorceauDAccueil (te::Engine& e)
 {
@@ -277,7 +292,7 @@ public:
         cmdAnnuler = 20, cmdRetablir, cmdDupliquerClip, cmdSupprimerClip, cmdCopierClip, cmdCollerClip, cmdBouclerClip,
         cmdVoirNotes = 30, cmdVoirInstrument, cmdAutomation,
         cmdReglagesAudio = 40, cmdPlugins,
-        cmdRaccourcis = 50, cmdJournal, cmdAPropos
+        cmdRaccourcis = 50, cmdJournal, cmdAPropos, cmdGuide, cmdDemo
     };
 
     juce::StringArray getMenuBarNames() override
@@ -337,6 +352,8 @@ public:
                 break;
 
             case 4:
+                ajouter (cmdGuide, fr ("Guide : mon premier morceau, Quack Synth..."));
+                ajouter (cmdDemo, fr ("Ouvrir le morceau de démonstration"));
                 ajouter (cmdRaccourcis, fr ("Raccourcis clavier..."));
                 ajouter (cmdJournal, fr ("Ouvrir le journal d'erreurs"));
                 m.addSeparator();
@@ -375,6 +392,8 @@ public:
             case cmdJournal:            Journal::ecrire ("Journal ouvert depuis le menu Aide");
                                         Journal::fichier().startAsProcess();        break;
             case cmdAPropos:            montrerAPropos();                           break;
+            case cmdGuide:              ouvrirGuide();                              break;
+            case cmdDemo:               verifierPuis ([this] { if (auto demo = creerMorceauDeDemo (engine)) remplacer (std::move (demo), {}); });  break;
             default:                    break;
         }
     }
@@ -458,19 +477,87 @@ private:
             nullptr);
     }
 
+    /** La fenêtre « À propos » : version, crédits, et les liens vers la musique de l'auteur. */
     void montrerAPropos()
     {
-        juce::AlertWindow::showAsync (
-            juce::MessageBoxOptions()
-                .withIconType (juce::MessageBoxIconType::InfoIcon)
-                .withTitle ("MAO Quack")
-                .withMessage (fr ("Version ") + juce::String (MAOQUACK_VERSION)
-                                  + fr ("\n\nUn petit logiciel de musique pour débuter.\n"
-                                        "Construit avec JUCE et Tracktion Engine (logiciels libres, licence GPL).\n"
-                                        "Export MP3 : encodeur LAME."))
-                .withButton ("OK", 1)
-                .withAssociatedComponent (this),
-            nullptr);
+        struct Contenu : public juce::Component
+        {
+            Contenu()
+            {
+                logo = juce::ImageCache::getFromMemory (BinaryData::icone_png, BinaryData::icone_pngSize);
+
+                const std::pair<const char*, const char*> liens[] = {
+                    { "Deezer",     "https://link.deezer.com/s/34XGhMuZrCJyDe47ulB1D" },
+                    { "Spotify",    "https://open.spotify.com/intl-fr/artist/2EffRdlYAAfxNy519PifEV?si=tZ8bNbpHQwSa4BOFDz3FIA" },
+                    { "SoundCloud", "https://soundcloud.com/alpha-quack-773871380" }
+                };
+
+                for (auto& l : liens)
+                {
+                    auto* b = boutons.add (new juce::HyperlinkButton (l.first, juce::URL (l.second)));
+                    b->setFont (juce::FontOptions (15.0f, juce::Font::bold), false);
+                    b->setColour (juce::HyperlinkButton::textColourId, Couleurs::accent);
+                    addAndMakeVisible (b);
+                }
+
+                setSize (460, 330);
+            }
+
+            void paint (juce::Graphics& g) override
+            {
+                g.fillAll (Couleurs::panneau);
+                g.drawImage (logo, juce::Rectangle<float> (20.0f, 18.0f, 96.0f, 96.0f));
+
+                g.setColour (Couleurs::accent);
+                g.setFont (juce::FontOptions (26.0f, juce::Font::bold));
+                g.drawText ("MAO Quack", 132, 24, 300, 32, juce::Justification::centredLeft);
+
+                g.setColour (Couleurs::texte);
+                g.setFont (juce::FontOptions (14.0f));
+                g.drawText ("Version " + juce::String (MAOQUACK_VERSION), 132, 58, 300, 20, juce::Justification::centredLeft);
+                g.drawText (fr ("Un petit logiciel de musique pour débuter."), 132, 80, 320, 20, juce::Justification::centredLeft);
+
+                g.setColour (Couleurs::texteDoux);
+                g.setFont (juce::FontOptions (12.5f));
+                g.drawFittedText (fr ("Construit avec JUCE et Tracktion Engine (logiciels libres). Export MP3 : encodeur LAME.\n"
+                                      "VST est une marque de Steinberg Media Technologies GmbH."),
+                                  20, 128, getWidth() - 40, 40, juce::Justification::topLeft, 3);
+
+                g.setColour (Couleurs::texte);
+                g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+                g.drawText (fr ("Écouter la musique de l'auteur, Alpha Quack :"), 20, 186, getWidth() - 40, 22, juce::Justification::centredLeft);
+            }
+
+            void resized() override
+            {
+                int x = 20;
+                for (auto* b : boutons)
+                {
+                    b->setBounds (x, 216, 130, 28);
+                    x += 140;
+                }
+            }
+
+            juce::Image logo;
+            juce::OwnedArray<juce::HyperlinkButton> boutons;
+        };
+
+        juce::DialogWindow::LaunchOptions o;
+        o.dialogTitle = fr ("À propos de MAO Quack");
+        o.dialogBackgroundColour = Couleurs::panneau;
+        o.content.setOwned (new Contenu());
+        o.componentToCentreAround = this;
+        o.useNativeTitleBar = true;
+        o.resizable = false;
+        o.launchAsync();
+    }
+
+    /** Ouvre le guide (une page web rangée dans la bibliothèque) dans le navigateur de l'ordinateur. */
+    void ouvrirGuide()
+    {
+        const auto guide = Reglages::dossierDonnees().getChildFile ("Guide MAO Quack.html");
+        guide.replaceWithData (BinaryData::Guide_html, (size_t) BinaryData::Guide_htmlSize);
+        guide.startAsProcess();
     }
 
     void remplacer (std::unique_ptr<te::Edit> nouveauMorceau, const juce::File& f)
@@ -500,9 +587,9 @@ private:
                                             return;
 
                                         moi->edit->getTransport().stop (false, false);
-                                        auto charge = te::loadEditFromFile (moi->engine, f);
+                                        auto charge = chargerMorceau (moi->engine, f);
 
-                                        if (charge == nullptr || te::getAudioTracks (*charge).isEmpty())
+                                        if (charge == nullptr)
                                         {
                                             juce::AlertWindow::showAsync (
                                                 juce::MessageBoxOptions()
@@ -515,10 +602,6 @@ private:
                                             return;
                                         }
 
-                                        Instruments::reparerSonsBatterie (*charge);
-                                        Effets::preparerOscillos (*charge);
-                                        charge->getUndoManager().clearUndoHistory();
-                                        charge->resetChangedStatus();
                                         moi->remplacer (std::move (charge), f);
                                     });
         });
@@ -615,7 +698,8 @@ private:
 class FenetrePrincipale : public juce::DocumentWindow
 {
 public:
-    FenetrePrincipale (te::Engine& e)
+    /** `fichierAOuvrir` : un morceau sur lequel l'utilisateur a double-cliqué dans l'explorateur (sinon vide). */
+    FenetrePrincipale (te::Engine& e, const juce::File& fichierAOuvrir)
         : juce::DocumentWindow ("MAO Quack", Couleurs::fond, juce::DocumentWindow::allButtons),
           engine (e)
     {
@@ -623,7 +707,20 @@ public:
         setResizable (true, false);
         setResizeLimits (900, 560, 10000, 10000);
         setIcon (juce::ImageCache::getFromMemory (BinaryData::icone_png, BinaryData::icone_pngSize));
-        afficher (creerMorceauDAccueil (engine), {}, true);
+        std::unique_ptr<te::Edit> depart;
+        juce::File fichierDepart;
+
+        if (fichierAOuvrir.existsAsFile())
+        {
+            depart = chargerMorceau (engine, fichierAOuvrir);
+            if (depart != nullptr)
+                fichierDepart = fichierAOuvrir;
+        }
+
+        if (depart == nullptr)
+            depart = creerMorceauDAccueil (engine);
+
+        afficher (std::move (depart), fichierDepart, true);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
     }
@@ -688,7 +785,12 @@ public:
         Instruments::preparerSonsBatterie();
         engine = std::make_unique<te::Engine> (std::make_unique<RangementMoteur>(), std::make_unique<ComportementQuack>(), std::make_unique<ReglagesMoteur>());
         Effets::declarerTypes (*engine);
-        fenetre = std::make_unique<FenetrePrincipale> (*engine);
+        // Lancé par un double-clic sur un morceau : son chemin arrive ici, parfois entre guillemets
+        const juce::File demande (ligneDeCommande.trim().unquoted());
+        const bool estUnMorceau = juce::File::isAbsolutePath (ligneDeCommande.trim().unquoted())
+                                    && demande.hasFileExtension (extensionMorceau);
+
+        fenetre = std::make_unique<FenetrePrincipale> (*engine, estUnMorceau ? demande : juce::File());
     }
 
     void shutdown() override

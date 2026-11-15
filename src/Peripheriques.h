@@ -439,7 +439,7 @@ private:
 
         for (auto& e : Instruments::catalogue())
         {
-            if (e.id == Instruments::idDe (Instruments::Type::batterie) || e.id == "inst:sampler")
+            if (e.id == Instruments::idDe (Instruments::Type::batterie) || e.id == "inst:sampler" || e.id.startsWith ("kit:"))
                 continue;
 
             presets.addItem (e.utilisateur ? e.nom + fr ("  (perso)") : e.nom, id);
@@ -854,57 +854,107 @@ private:
 };
 
 //==============================================================================
-/** La batterie : 8 pads, chacun avec son volume et son placement gauche/droite.
-    On peut remplacer le son d'un pad : bouton « ... », ou fichier glissé depuis l'explorateur. */
+/** Quack Drums, présenté comme le Drum Rack d'Ableton : une grille compacte de 16 pads (C1 en bas à gauche).
+    Clic : écouter et choisir le pad. Clic droit : le renommer, charger un autre son, ou le vider.
+    On peut aussi glisser un fichier son sur un pad. Le kit complet s'enregistre comme préréglage. */
 class PeripheriqueBatterie : public Peripherique,
                              public juce::FileDragAndDropTarget
 {
 public:
+    static constexpr int premiereNote = 36, nombrePads = 16;
+    static constexpr int largeurPad = 60, hauteurPad = 44, ecart = 3;
+
     PeripheriqueBatterie (te::SamplerPlugin& s, te::AudioTrack& t, juce::Colour c)
-        : Peripherique (s, "Quack Drums", 8 + 4 * 112, false, c), batterie (s), piste (&t)
+        : Peripherique (s, "Quack Drums", 8 + 4 * largeurPad + 3 * ecart + 12 + 150 + 8, false, c),
+          batterie (s), piste (&t), grille (*this)
     {
-        for (int i = 0; i < juce::jmin (8, batterie.getNumSounds()); ++i)
+        addAndMakeVisible (grille);
+        grille.setBounds (8, hauteurEntete + 8, 4 * largeurPad + 3 * ecart, 4 * hauteurPad + 3 * ecart);
+
+        const int x = 8 + 4 * largeurPad + 3 * ecart + 12;
+
+        etiquette (x, 6, "PAD");
+        ajouter<TexteVivant> (juce::Rectangle<int> (x, 22, 150, 20),
+                              [this]
+                              {
+                                  const int i = indexDuPad (padChoisi);
+                                  return nomDeNote (padChoisi) + "  -  " + (i >= 0 ? batterie.getSoundName (i) : fr ("(vide)"));
+                              });
+
+        Potard::Lien volume;
+        volume.plage = juce::NormalisableRange<double> (-36.0, 12.0, 0.1);
+        volume.lire = [this] { const int i = indexDuPad (padChoisi); return i >= 0 ? batterie.getSoundGainDb (i) : 0.0f; };
+        volume.ecrire = [this] (float v)
         {
-            const auto zone = zonePad (i);
-            const int x = zone.getX(), y = zone.getY();
+            const int i = indexDuPad (padChoisi);
+            if (i >= 0)
+                batterie.setSoundGains (i, v, batterie.getSoundPan (i));
+        };
+        volume.texte = [] (float v) { return juce::String (v, 1) + " dB"; };
+        volume.debutGeste = [this] { debutGeste(); };
+        volume.aUnDefaut = true;
+        potardLibre (x + 14, 48, "Volume", volume, fr ("Le volume du pad choisi."));
 
-            auto& pad = ajouter<juce::TextButton> (juce::Rectangle<int> (x, y, 78, 62), batterie.getSoundName (i));
-            pad.setWantsKeyboardFocus (false);
-            pad.setColour (juce::TextButton::buttonColourId, c.withMultipliedBrightness (0.55f));
-            pad.setTriggeredOnMouseDown (true);
-            pad.onClick = [this, i] { jouer (batterie.getKeyNote (i)); };
-            definirAide (pad, fr ("Pad de batterie"),
-                         fr ("Clique pour écouter ce son. Pour le remplacer par un autre : bouton « ... » à côté, "
-                             "ou glisse un fichier son (WAV, MP3...) depuis l'explorateur sur ce pad."));
-            pads.add (&pad);
+        Potard::Lien pan;
+        pan.plage = juce::NormalisableRange<double> (-1.0, 1.0, 0.01);
+        pan.lire = [this] { const int i = indexDuPad (padChoisi); return i >= 0 ? batterie.getSoundPan (i) : 0.0f; };
+        pan.ecrire = [this] (float v)
+        {
+            const int i = indexDuPad (padChoisi);
+            if (i >= 0)
+                batterie.setSoundGains (i, batterie.getSoundGainDb (i), v);
+        };
+        pan.texte = [] (float v)
+        {
+            const int p = juce::roundToInt (v * 50.0f);
+            return p == 0 ? juce::String ("C") : juce::String (std::abs (p)) + (p < 0 ? "L" : "R");
+        };
+        pan.debutGeste = [this] { debutGeste(); };
+        pan.aUnDefaut = true;
+        potardLibre (x + 14 + lp + 10, 48, "Pan", pan, fr ("Place le son du pad choisi plus à gauche ou plus à droite."));
 
-            auto& charger = ajouter<juce::TextButton> (juce::Rectangle<int> (x + 80, y, 24, 30), "...");
-            charger.setWantsKeyboardFocus (false);
-            charger.onClick = [this, i] { choisirSon (i); };
-            definirAide (charger, fr ("Changer le son du pad"), fr ("Choisis un fichier son pour remplacer celui de ce pad."));
+        auto& charger = ajouter<juce::TextButton> (juce::Rectangle<int> (x, 112, 150, 24), fr ("Charger un son..."));
+        charger.setWantsKeyboardFocus (false);
+        charger.onClick = [this] { choisirSon (padChoisi); };
+        definirAide (charger, fr ("Charger un son"), fr ("Choisis un fichier son (WAV, MP3...) pour le pad choisi."));
 
-            Potard::Lien volume;
-            volume.plage = juce::NormalisableRange<double> (-36.0, 12.0, 0.1);
-            volume.lire = [this, i] { return batterie.getSoundGainDb (i); };
-            volume.ecrire = [this, i] (float v) { batterie.setSoundGains (i, v, batterie.getSoundPan (i)); };
-            volume.texte = [] (float v) { return juce::String (v, 1) + " dB"; };
-            volume.debutGeste = [this] { debutGeste(); };
-            volume.aUnDefaut = true;
-            potardLibre (x + 6, y + 66, "Volume", volume, fr ("Le volume de ce son de batterie."));
+        auto& renommer = ajouter<juce::TextButton> (juce::Rectangle<int> (x, 140, 150, 24), "Renommer...");
+        renommer.setWantsKeyboardFocus (false);
+        renommer.onClick = [this] { renommerPad (padChoisi); };
+        definirAide (renommer, fr ("Renommer le pad"), fr ("Change le nom affiché sur le pad choisi (et dans le piano roll)."));
 
-            Potard::Lien pan;
-            pan.plage = juce::NormalisableRange<double> (-1.0, 1.0, 0.01);
-            pan.lire = [this, i] { return batterie.getSoundPan (i); };
-            pan.ecrire = [this, i] (float v) { batterie.setSoundGains (i, batterie.getSoundGainDb (i), v); };
-            pan.texte = [] (float v)
-            {
-                const int p = juce::roundToInt (v * 50.0f);
-                return p == 0 ? juce::String ("C") : juce::String (std::abs (p)) + (p < 0 ? "L" : "R");
-            };
-            pan.debutGeste = [this] { debutGeste(); };
-            pan.aUnDefaut = true;
-            potardLibre (x + 54, y + 66, "Pan", pan, fr ("Place ce son plus à gauche ou plus à droite."));
-        }
+        // Les kits (dans l'en-tête)
+        addAndMakeVisible (kits);
+        kits.setWantsKeyboardFocus (false);
+        kits.setTextWhenNothingSelected ("Kit...");
+        kits.onChange = [this]
+        {
+            const int i = kits.getSelectedItemIndex();
+            if (i >= 0 && i < idsKits.size() && surPreset)
+                surPreset (idsKits[i]);
+        };
+        definirAide (kits, "Kits",
+                     fr ("Les kits de batterie : le kit électronique fourni, et ceux que tu as enregistrés avec Save."));
+
+        addAndMakeVisible (enregistrer);
+        enregistrer.setButtonText ("Save");
+        enregistrer.setWantsKeyboardFocus (false);
+        enregistrer.onClick = [this] { demanderNomKit(); };
+        definirAide (enregistrer, fr ("Enregistrer le kit"),
+                     fr ("Garde ce kit (ses sons, leurs noms, volumes et panoramiques) sous un nom : tu le retrouveras dans "
+                         "cette liste et dans le navigateur, dossier Quack Drums."));
+
+        remplirKits();
+    }
+
+    /** Appelé quand l'utilisateur choisit un autre kit (identifiant du catalogue). */
+    std::function<void (juce::String)> surPreset;
+
+    void resized() override
+    {
+        Peripherique::resized();
+        kits.setBounds (130, 3, 170, hauteurEntete - 6);
+        enregistrer.setBounds (306, 3, 50, hauteurEntete - 6);
     }
 
     //==========================================================================
@@ -915,27 +965,122 @@ public:
 
     void filesDropped (const juce::StringArray& fichiers, int x, int y) override
     {
-        for (int i = 0; i < pads.size(); ++i)
-        {
-            if (zonePad (i).translated (0, hauteurEntete).withHeight (126).contains (x, y))
-            {
-                definirSon (i, juce::File (fichiers[0]));
-                return;
-            }
-        }
+        const int note = grille.noteEn ({ x - grille.getX(), y - grille.getY() });
+
+        if (note >= 0)
+            definirSon (note, juce::File (fichiers[0]));
+    }
+
+protected:
+    void appliquerVisibilite() override
+    {
+        Peripherique::appliquerVisibilite();
+        grille.setVisible (! reduit);
+        kits.setVisible (! reduit);
+        enregistrer.setVisible (! reduit);
     }
 
 private:
+    //==========================================================================
+    /** La grille de pads, dessinée d'un bloc. */
+    class Grille : public juce::Component,
+                   private juce::Timer
+    {
+    public:
+        Grille (PeripheriqueBatterie& p) : parent (p)
+        {
+            definirAide (*this, "Pads",
+                         fr ("Chaque pad est un son de batterie, joué par une note (C1 en bas à gauche). Clic : l'écouter et le "
+                             "choisir. Clic droit : le renommer, charger un autre son ou le vider. Tu peux aussi glisser un "
+                             "fichier son depuis l'explorateur sur un pad, même vide."));
+            startTimerHz (8);
+        }
+
+        juce::Rectangle<int> zonePad (int note) const
+        {
+            const int i = note - premiereNote;
+            return { (i % 4) * (largeurPad + ecart), (3 - i / 4) * (hauteurPad + ecart), largeurPad, hauteurPad };
+        }
+
+        int noteEn (juce::Point<int> p) const
+        {
+            for (int n = premiereNote; n < premiereNote + nombrePads; ++n)
+                if (zonePad (n).contains (p))
+                    return n;
+
+            return -1;
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            for (int n = premiereNote; n < premiereNote + nombrePads; ++n)
+            {
+                const auto r = zonePad (n);
+                const int index = parent.indexDuPad (n);
+                const bool choisi = (n == parent.padChoisi);
+
+                g.setColour (choisi ? parent.couleur.withMultipliedSaturation (0.6f).brighter (0.3f)
+                                    : index >= 0 ? Couleurs::panneauClair.brighter (0.08f) : Couleurs::panneau.darker (0.15f));
+                g.fillRoundedRectangle (r.toFloat(), 3.0f);
+                g.setColour (Couleurs::bordure);
+                g.drawRoundedRectangle (r.toFloat().reduced (0.5f), 3.0f, 1.0f);
+
+                g.setColour (choisi ? juce::Colours::black : Couleurs::texteDoux);
+                g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+                g.drawText (nomDeNote (n), r.reduced (4, 2), juce::Justification::topLeft, false);
+
+                if (index >= 0)
+                {
+                    g.setColour (choisi ? juce::Colours::black : Couleurs::texte);
+                    g.setFont (juce::FontOptions (11.0f));
+                    g.drawFittedText (parent.batterie.getSoundName (index), r.reduced (3, 2).withTrimmedTop (12),
+                                      juce::Justification::centred, 2, 0.85f);
+                }
+            }
+        }
+
+        void mouseDown (const juce::MouseEvent& e) override
+        {
+            const int note = noteEn (e.getPosition());
+            if (note < 0)
+                return;
+
+            parent.padChoisi = note;
+            repaint();
+
+            if (e.mods.isPopupMenu())
+                parent.menuPad (note);
+            else
+                parent.jouer (note);
+        }
+
+    private:
+        PeripheriqueBatterie& parent;
+
+        void timerCallback() override       { repaint(); }      // les noms peuvent changer (annuler, renommer...)
+    };
+
     te::SamplerPlugin& batterie;
     te::AudioTrack::Ptr piste;
     te::MPESourceID source = te::createUniqueMPESourceID();
-    juce::Array<juce::TextButton*> pads;
+    Grille grille;
+    juce::ComboBox kits;
+    juce::TextButton enregistrer;
+    juce::StringArray idsKits;
+    int padChoisi = premiereNote;
     std::shared_ptr<juce::FileChooser> selecteur;
 
-    /** La place du pad numéro i (les sons graves en bas, comme dans un Drum Rack). */
-    static juce::Rectangle<int> zonePad (int i)
+    //==========================================================================
+    static juce::String nomDeNote (int note)    { return juce::MidiMessage::getMidiNoteName (note, true, true, 3); }
+
+    /** Le numéro du son joué par cette note dans la batterie, ou -1 si le pad est vide. */
+    int indexDuPad (int note) const
     {
-        return { 8 + (i % 4) * 112, 6 + (1 - i / 4) * 134, 104, 62 };
+        for (int i = 0; i < batterie.getNumSounds(); ++i)
+            if (batterie.getKeyNote (i) == note)
+                return i;
+
+        return -1;
     }
 
     void jouer (int note)
@@ -944,34 +1089,156 @@ private:
         piste->injectLiveMidiMessage (juce::MidiMessage::noteOff (1, note), source);
     }
 
-    void choisirSon (int index)
+    void menuPad (int note)
     {
-        selecteur = std::make_shared<juce::FileChooser> (fr ("Choisir un son pour ce pad"),
+        const bool plein = indexDuPad (note) >= 0;
+
+        juce::PopupMenu m;
+        m.addSectionHeader ("Pad " + nomDeNote (note));
+        m.addItem (1, fr ("Charger un son..."));
+        m.addItem (2, "Renommer...", plein);
+        m.addSeparator();
+        m.addItem (3, fr ("Vider le pad"), plein);
+
+        juce::Component::SafePointer<PeripheriqueBatterie> moi (this);
+
+        m.showMenuAsync (juce::PopupMenu::Options(), [moi, note] (int choix)
+        {
+            if (moi == nullptr)
+                return;
+
+            if (choix == 1)         moi->choisirSon (note);
+            else if (choix == 2)    moi->renommerPad (note);
+            else if (choix == 3)
+            {
+                const int i = moi->indexDuPad (note);
+                if (i >= 0)
+                {
+                    moi->debutGeste();
+                    moi->batterie.removeSound (i);
+                }
+            }
+        });
+    }
+
+    void choisirSon (int note)
+    {
+        selecteur = std::make_shared<juce::FileChooser> (fr ("Choisir un son pour le pad ") + nomDeNote (note),
                                                          juce::File::getSpecialLocation (juce::File::userMusicDirectory),
                                                          "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3");
         juce::Component::SafePointer<PeripheriqueBatterie> moi (this);
 
         selecteur->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                                [moi, index] (const juce::FileChooser& fc)
+                                [moi, note] (const juce::FileChooser& fc)
                                 {
                                     if (moi != nullptr && fc.getResult().existsAsFile())
-                                        moi->definirSon (index, fc.getResult());
+                                        moi->definirSon (note, fc.getResult());
                                 });
     }
 
-    void definirSon (int index, const juce::File& fichier)
+    /** Met un fichier son sur un pad (en remplaçant celui qui s'y trouve, ou en remplissant un pad vide). */
+    void definirSon (int note, const juce::File& fichier)
     {
-        if (index < 0 || index >= batterie.getNumSounds() || ! FormesOnde::estFichierSon (fichier))
+        if (! FormesOnde::estFichierSon (fichier))
             return;
 
         debutGeste();
-        batterie.setSoundMedia (index, fichier.getFullPathName());
-        batterie.setSoundName (index, fichier.getFileNameWithoutExtension());
+        int index = indexDuPad (note);
 
-        if (index < pads.size())
-            pads[index]->setButtonText (batterie.getSoundName (index));
+        if (index >= 0)
+        {
+            batterie.setSoundMedia (index, fichier.getFullPathName());
+            batterie.setSoundName (index, fichier.getFileNameWithoutExtension());
+        }
+        else if (batterie.addSound (fichier.getFullPathName(), fichier.getFileNameWithoutExtension(), 0.0, 0.0, 0.0f).isEmpty())
+        {
+            index = batterie.getNumSounds() - 1;
+            batterie.setSoundParams (index, note, note, note);
+            batterie.setSoundOpenEnded (index, true);
+        }
 
-        jouer (batterie.getKeyNote (index));
+        padChoisi = note;
+        batterie.flushPendingUpdates();
+        jouer (note);
+    }
+
+    void renommerPad (int note)
+    {
+        const int index = indexDuPad (note);
+        if (index < 0)
+            return;
+
+        auto* fenetre = new juce::AlertWindow ("Renommer le pad " + nomDeNote (note), fr ("Nouveau nom :"),
+                                               juce::MessageBoxIconType::NoIcon, this);
+        fenetre->addTextEditor ("nom", batterie.getSoundName (index));
+        fenetre->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        fenetre->addButton ("Annuler", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+        juce::Component::SafePointer<PeripheriqueBatterie> moi (this);
+
+        fenetre->enterModalState (true, juce::ModalCallbackFunction::create ([moi, fenetre, note] (int resultat)
+        {
+            const auto nom = fenetre->getTextEditorContents ("nom").trim();
+
+            if (moi != nullptr && resultat == 1 && nom.isNotEmpty())
+            {
+                const int i = moi->indexDuPad (note);
+                if (i >= 0)
+                {
+                    moi->debutGeste();
+                    moi->batterie.setSoundName (i, nom);
+                }
+            }
+        }), true);
+    }
+
+    //==========================================================================
+    void remplirKits()
+    {
+        kits.clear (juce::dontSendNotification);
+        idsKits.clear();
+
+        const auto actuel = Instruments::nomPresetDe (batterie);
+        int id = 1, choisi = 0;
+
+        for (auto& e : Instruments::catalogue())
+        {
+            if (e.id != "inst:batterie" && ! e.id.startsWith ("kit:"))
+                continue;
+
+            const auto nom = e.id == "inst:batterie" ? fr ("Kit électronique") : e.nom;
+            kits.addItem (nom, id);
+            idsKits.add (e.id);
+
+            if (e.nom == actuel || (e.id == "inst:batterie" && actuel == "Batterie"))
+                choisi = id;
+            ++id;
+        }
+
+        if (choisi > 0)
+            kits.setSelectedId (choisi, juce::dontSendNotification);
+    }
+
+    void demanderNomKit()
+    {
+        auto* fenetre = new juce::AlertWindow (fr ("Enregistrer le kit"), fr ("Quel nom veux-tu donner à ce kit de batterie ?"),
+                                               juce::MessageBoxIconType::NoIcon, this);
+        fenetre->addTextEditor ("nom", fr ("Mon kit"));
+        fenetre->addButton ("Enregistrer", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        fenetre->addButton ("Annuler", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+        juce::Component::SafePointer<PeripheriqueBatterie> moi (this);
+
+        fenetre->enterModalState (true, juce::ModalCallbackFunction::create ([moi, fenetre] (int resultat)
+        {
+            const auto nom = fenetre->getTextEditorContents ("nom").trim();
+
+            if (moi != nullptr && resultat == 1 && nom.isNotEmpty())
+            {
+                Instruments::enregistrerKit (moi->batterie, nom);
+                moi->remplirKits();
+            }
+        }), true);
     }
 };
 
@@ -1765,7 +2032,12 @@ private:
                     s->surPreset = [this] (juce::String id) { differer ([id] (te::AudioTrack& t) { Instruments::appliquer (t, id); }); };
                     p = s;
                 }
-                else if (auto* batterie = dynamic_cast<te::SamplerPlugin*> (plugin))    p = new PeripheriqueBatterie (*batterie, *piste, couleur);
+                else if (auto* batterie = dynamic_cast<te::SamplerPlugin*> (plugin))
+                {
+                    auto* b = new PeripheriqueBatterie (*batterie, *piste, couleur);
+                    b->surPreset = [this] (juce::String id) { differer ([id] (te::AudioTrack& t) { Instruments::appliquer (t, id); }); };
+                    p = b;
+                }
                 else if (auto* sampleur = dynamic_cast<SampleurQuack*> (plugin))        p = new PeripheriqueSampleur (*sampleur, couleur);
                 else if (auto* eq = dynamic_cast<te::EqualiserPlugin*> (plugin))        p = new PeripheriqueEQ (*eq, couleur);
                 else if (auto* comp = dynamic_cast<te::CompressorPlugin*> (plugin))     p = new PeripheriqueCompresseur (*comp, *piste, couleur);

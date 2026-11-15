@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MAOQuack VERSION 0.9.0 LANGUAGES C CXX)
+project(MAOQuack VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,7 +32,8 @@ juce_add_gui_app(MAOQuack
 # Fichiers embarqués dans le programme : le morceau de démonstration et l'icône
 juce_add_binary_data(MAOQuackDonnees SOURCES
     assets/demo.quack
-    assets/icone.png)
+    assets/icone.png
+    assets/Guide.html)
 
 target_sources(MAOQuack PRIVATE
     src/Main.cpp)

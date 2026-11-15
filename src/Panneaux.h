@@ -192,14 +192,17 @@ public:
         if (e.mods.isPopupMenu() && ligne.utilisateur)
         {
             juce::PopupMenu m;
-            m.addItem (1, fr ("Supprimer ce préréglage"));
+            m.addItem (1, ligne.id.startsWith ("kit:") ? fr ("Supprimer ce kit") : fr ("Supprimer ce préréglage"));
             juce::Component::SafePointer<Navigateur> moi (this);
 
             m.showMenuAsync (juce::PopupMenu::Options(), [moi, ligne] (int choix)
             {
                 if (moi != nullptr && choix == 1)
                 {
-                    Instruments::fichierPreset (ligne.nom).deleteFile();
+                    if (ligne.id.startsWith ("kit:"))
+                        Instruments::fichierKit (ligne.nom).deleteFile();
+                    else
+                        Instruments::fichierPreset (ligne.nom).deleteFile();
                     moi->favoris.removeString (ligne.id);
                     Reglages::ecrireFavoris (moi->favoris);
                     moi->recharger();
@@ -274,6 +277,7 @@ private:
         if (id == "inst:jeuvideo")  return fr ("Un son carré, comme dans les vieux jeux vidéo.");
         if (id == "inst:sampler")   return fr ("Le sampler : il joue un son enregistré comme un instrument, au clavier ou découpé en tranches. Glisse-y ensuite un fichier son.");
         if (id == "inst:init")      return fr ("Le son de base du synthé, tout simple : le point de départ pour fabriquer ton propre son.");
+        if (id.startsWith ("kit:")) return fr ("Un de tes kits de batterie. Clic droit : le supprimer.");
         return fr ("Un de tes préréglages personnels. Clic droit : le supprimer.");
     }
 
@@ -285,7 +289,7 @@ private:
         {
             Ligne l;
             l.id = e.id;
-            l.nom = e.id == "inst:batterie" ? juce::String ("Quack Drums") : e.nom;
+            l.nom = e.id == "inst:batterie" ? fr ("Kit électronique") : e.nom;
             l.description = descriptionInstrument (e.id);
             l.utilisateur = e.utilisateur;
             elements.add (l);
@@ -484,11 +488,18 @@ private:
             lignes.add (dossier (1, "Quack Synth", fr ("Le synthétiseur : chaque préréglage est un son tout prêt, que tu peux ensuite modifier."), "inst:init"));
             if (ouverts.contains ("Quack Synth"))
                 for (auto& e : elements)
-                    if (! e.effet && e.id != "inst:batterie" && e.id != "inst:sampler")
+                    if (! e.effet && e.id != "inst:batterie" && e.id != "inst:sampler" && ! e.id.startsWith ("kit:"))
+                        ajouterElement (e, 2);
+
+            // Quack Drums : le kit fourni, puis les kits enregistrés
+            lignes.add (dossier (1, "Quack Drums", fr ("La boîte à rythmes : une grille de pads, un son par pad. À l'intérieur : tes kits."), "inst:batterie"));
+            if (ouverts.contains ("Quack Drums"))
+                for (auto& e : elements)
+                    if (e.id == "inst:batterie" || e.id.startsWith ("kit:"))
                         ajouterElement (e, 2);
 
             for (auto& e : elements)
-                if (e.id == "inst:batterie" || e.id == "inst:sampler")
+                if (e.id == "inst:sampler")
                     ajouterElement (e, 1);
 
             ajouterPlugins ("Instruments");

@@ -200,7 +200,7 @@ public:
         definirAide (*this, fr ("Arrangement"),
                      fr ("Ton morceau, de gauche à droite. Double-clic sur une piste MIDI : créer un clip de notes ; sur une "
                          "piste audio : importer un son. Glisse un clip pour le déplacer (Ctrl + glisser : le dupliquer), tire "
-                         "son bord droit pour l'allonger. Tout en haut de la règle : glisse pour définir la boucle. "
+                         "son bord droit pour l'allonger, son bord gauche pour choisir où il commence. Tout en haut de la règle : glisse pour définir la boucle. "
                          "Double-clic dans la règle : poser un repère. Ctrl + molette : zoomer."));
 
         startTimerHz (30);
@@ -285,6 +285,13 @@ public:
         {
             g.setColour (juce::Colours::white.withAlpha (0.12f));
             g.fillRect (zone.getX(), yPiste (pisteSurvolee), zone.getWidth(), hauteurPiste);
+        }
+
+        // Pendant qu'on tire le bord gauche d'un clip de notes : un trait montre où il commencera
+        if (mode == Mode::rognerGauche && selection.clipMidiValide() != nullptr)
+        {
+            g.setColour (juce::Colours::white);
+            g.fillRect (tempsVersX (debutVise) - 1, zone.getY(), 2, basPistes - zone.getY());
         }
 
         // Traits des repères
@@ -460,8 +467,12 @@ public:
 
             const auto r = rectangleClip (*clip, Selection::indexPiste (edit, *clip));
             const auto temps = tempsDuClip (*clip);
-            mode = (e.x > r.getRight() - 8 && r.getWidth() > 16) ? Mode::redimensionner : Mode::deplacer;
+            if (e.x > r.getRight() - 8 && r.getWidth() > 16)        mode = Mode::redimensionner;
+            else if (e.x < r.getX() + 7 && r.getWidth() > 24)       mode = Mode::rognerGauche;
+            else                                                    mode = Mode::deplacer;
+
             decalagePrise = xVersTemps (e.x) - temps.getStart().inBeats();
+            debutVise = temps.getStart().inBeats();
         }
         else
         {
@@ -550,6 +561,29 @@ public:
                 && TypePiste::estAudio (*pistes[cible]) == estClipAudio (*clip))
                 clip->moveTo (*pistes[cible]);
         }
+        else if (mode == Mode::rognerGauche)
+        {
+            // Le bord gauche choisit où le clip commence, sans déplacer ce qu'il contient
+            double debut = juce::jlimit (0.0, temps.getEnd().inBeats() - 1.0, std::round (xVersTemps (e.x)));
+
+            if (auto* son = dynamic_cast<te::WaveAudioClip*> (clip))
+            {
+                // Un son : on déplace son point d'entrée. On ne peut pas remonter avant le début du fichier.
+                const auto position = clip->getPosition();
+                auto nouveau = edit.tempoSequence.toTime (te::BeatPosition::fromBeats (debut));
+                const auto plusTot = position.time.getStart() - position.offset;
+
+                if (nouveau < plusTot)
+                    nouveau = plusTot;
+
+                if (nouveau != position.time.getStart())
+                    son->setStart (nouveau, true, false);
+            }
+            else
+            {
+                debutVise = debut;      // un clip de notes : appliqué au relâchement de la souris
+            }
+        }
         else if (mode == Mode::redimensionner)
         {
             double fin = juce::jmax (temps.getStart().inBeats() + 1.0, std::round (xVersTemps (e.x)));
@@ -571,8 +605,12 @@ public:
 
     void mouseUp (const juce::MouseEvent&) override
     {
+        if (mode == Mode::rognerGauche)
+            if (auto* mc = selection.clipMidiValide())
+                deplacerDebutMidi (*mc, debutVise);
+
         // Un clip posé sur un autre l'écrase, comme dans Ableton
-        if (mode == Mode::deplacer || mode == Mode::redimensionner)
+        if (mode == Mode::deplacer || mode == Mode::redimensionner || mode == Mode::rognerGauche)
             if (auto* clip = selection.clipValide())
                 ecraserSous (*clip);
 
@@ -597,7 +635,7 @@ public:
         else if (auto* clip = modeAutomation ? nullptr : clipSous (e.getPosition()))
         {
             const auto r = rectangleClip (*clip, Selection::indexPiste (edit, *clip));
-            bord = e.x > r.getRight() - 8 && r.getWidth() > 16;
+            bord = (e.x > r.getRight() - 8 && r.getWidth() > 16) || (e.x < r.getX() + 7 && r.getWidth() > 24);
         }
 
         setMouseCursor (bord ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
@@ -939,7 +977,7 @@ public:
     }
 
 private:
-    enum class Mode { rien, lecture, boucle, boucleDebut, boucleFin, boucleEntiere, repere, deplacer, redimensionner, automation };
+    enum class Mode { rien, lecture, boucle, boucleDebut, boucleFin, boucleEntiere, repere, deplacer, redimensionner, rognerGauche, automation };
 
     te::Edit& edit;
     Selection& selection;
@@ -956,7 +994,7 @@ private:
     int compteur = 0;
 
     Mode mode = Mode::rien;
-    double decalagePrise = 0.0, departBoucle = 0.0;
+    double decalagePrise = 0.0, departBoucle = 0.0, debutVise = 0.0;
     bool duplicationFaite = false;
     int repereGlisse = -1;
     te::Clip::Ptr clipCopie;
@@ -1015,6 +1053,34 @@ private:
 
                 c->setEnd (zone.getStart(), true);
             }
+        }
+    }
+
+    /** Déplace le début d'un clip de notes (plus tôt ou plus tard) sans déplacer ses notes dans le morceau. */
+    void deplacerDebutMidi (te::MidiClip& clip, double nouveauDebutEnTemps)
+    {
+        const double ancien = tempsDuClip (clip).getStart().inBeats();
+        const double delta = nouveauDebutEnTemps - ancien;
+
+        if (std::abs (delta) < 0.001)
+            return;
+
+        const auto instant = edit.tempoSequence.toTime (te::BeatPosition::fromBeats (nouveauDebutEnTemps));
+
+        if (delta > 0.0)
+        {
+            rognerDebut (clip, instant);        // le clip commence plus tard : les notes d'avant sont coupées
+        }
+        else
+        {
+            // Le clip commence plus tôt : on recule son début et on recale les notes d'autant
+            auto* um = &edit.getUndoManager();
+            const juce::Array<te::MidiNote*> notes (clip.getSequence().getNotes());
+
+            for (auto* n : notes)
+                n->setStartAndLength (te::BeatPosition::fromBeats (n->getStartBeat().inBeats() - delta), n->getLengthBeats(), um);
+
+            clip.setStart (instant, false, false);
         }
     }
 

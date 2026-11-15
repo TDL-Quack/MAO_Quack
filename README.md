@@ -20,8 +20,7 @@ Décompresser, puis lancer `MAO Quack.exe`.
 - [x] Démo au premier lancement, icône, bibliothèque dans Documents/MAO Quack
 - [x] Pistes et clips audio, boucle, repères
 - [x] Plugins VST3 (recherche, catégories, fenêtre du plugin), automations
-- [ ] Mixage, automation, export
-- [ ] Warping, racks, VST3
+- [x] Version 1.0 : Quack Drums en grille de 16 pads avec kits, point d'entrée des clips, guide (docs/Guide.md), installeur Windows
 
 ## Technique
 
