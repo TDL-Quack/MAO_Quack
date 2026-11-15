@@ -26,3 +26,12 @@ Décompresser, puis lancer `MAO Quack.exe`.
 
 C++20, [JUCE](https://juce.com) et [Tracktion Engine](https://github.com/Tracktion/tracktion_engine) (licence GPL).
 La fabrication est automatique (GitHub Actions) à chaque modification de `main`.
+
+## À faire (1.1)
+
+- [ ] Copier-coller des chaînes d'effets d'une piste à l'autre
+
+## Licence
+
+MAO Quack est un logiciel libre, distribué sous licence **GNU AGPL v3** (voir `LICENSE.md`), comme JUCE sur lequel il repose. Il utilise aussi Tracktion Engine (GPL v3) et, pour l'export MP3, l'encodeur LAME (LGPL).
+
